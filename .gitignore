@@ -4,3 +4,7 @@ data/*.tmp
 docs/*.tmp
 .DS_Store
 Thumbs.db
+
+# wrangler 本地状态（含账号缓存，绝不入库）
+.wrangler/
+.dev.vars

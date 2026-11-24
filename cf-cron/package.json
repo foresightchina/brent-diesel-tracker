@@ -1,0 +1,15 @@
+{
+  "name": "brent-diesel-cron",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare 定时触发器：按 5 分钟节奏调用 GitHub 抓取工作流",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "secret": "wrangler secret put GH_TOKEN"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

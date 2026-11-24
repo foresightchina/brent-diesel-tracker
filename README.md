@@ -34,7 +34,10 @@
 ## 数据是怎么流转的
 
 ```
-GitHub Actions（cron 每 30 分钟）
+Cloudflare Worker（cron 每 5 分钟，见 cf-cron/）
+  └─ 调 GitHub workflow_dispatch（上一次还在跑就跳过这轮）
+       ↓
+GitHub Actions
   └─ node scripts/scrape.js
        ├─ 抓新浪日线        → brent
        ├─ 抓东财布伦特日线   → emBrent
@@ -44,7 +47,18 @@ GitHub Actions（cron 每 30 分钟）
   └─ git commit && git push
        ↓
 GitHub Pages 检测到变更 → 1 分钟内自动重新发布
+       ↓
+浏览器打开页面
+  ├─ 先读 docs/data.json（历史归档，2500+ 个交易日）
+  └─ 再直连东财行情接口取当前价（跨域已放开），每 30 秒跟随
 ```
+
+**为什么定时要绕 Cloudflare 这一道：** GitHub Actions 自带的 `schedule` 官方定性是"尽力而为"，
+本项目实测更糟——建仓当天三个应触发的时间点**一次都没跑**。所以改由 Cloudflare 的 Cron
+按分钟级精度去敲它。抓取仍留在 GitHub（已验证能通国内三个数据源），Cloudflare 只负责准时。
+
+**为什么页面还要自己取一次实时价：** 即使定时器再准，抓取本身也有几分钟间隔。
+页面直连行情接口后，打开即是最新数字，不再受后台任务影响。
 
 **只有数据真的变了才会提交。** 周末、休市、行情无波动时不产生任何 commit，
 仓库历史保持干净。
@@ -54,7 +68,8 @@ GitHub Pages 检测到变更 → 1 分钟内自动重新发布
 ## 目录说明
 
 ```
-.github/workflows/scrape.yml   定时任务配置
+cf-cron/                       Cloudflare 定时触发器（只当闹钟，不抓数据）
+.github/workflows/scrape.yml   GitHub Actions 任务配置
 scripts/scrape.js              抓取与归档脚本（零外部依赖）
 scripts/serve.js               本地预览用的小服务器
 data/store.json                全量归档，唯一事实来源
@@ -114,11 +129,16 @@ node scripts/scrape.js
 ## 已知限制
 
 1. **国内访问 `github.io` 可能不稳定**，取决于当天网络。需要长期稳定访问可绑定自定义域名 + CDN。
-2. **定时任务不保证准时**。GitHub 官方明确说明高峰期可能延迟十几分钟甚至跳过某次。
-   对「每日开盘价」无影响（一天记一次），盘中高/低点的时间戳会有偏差。
-3. **仓库连续 60 天无任何提交，GitHub 会自动停用定时任务**。
+   注意：Cloudflare 无法为网站做 ICP 备案（备案只针对中国大陆境内服务器），
+   所以走 Cloudflare 只能改善、不能根治国内访问问题。
+2. **GitHub 自带的 `schedule` 不可依赖**。本项目实测建仓当天三个时间点一次都没触发，
+   因此改由 `cf-cron/` 里的 Cloudflare 定时器触发（每 5 分钟）。
+   页面另有浏览器直连实时行情兜底，所以即使定时器也停了，打开页面看到的仍是最新价。
+3. **`workers.dev` 域名在国内多数网络被阻断**。这不影响本项目——Worker 只做后台定时，
+   不需要访问它的网址。数据仍落在 GitHub，页面仍由 GitHub Pages 托管。
+4. **仓库连续 60 天无任何提交，GitHub 会自动停用 Actions**。
    本项目每个交易日都会产生提交，因此不会触发；若长期停市，需在 Actions 页手动重新启用。
-4. **公开仓库的数据对全网可见**。当前仅含公开行情，无敏感信息。
+5. **公开仓库的数据对全网可见**。当前仅含公开行情，无敏感信息。
 
 ---
 

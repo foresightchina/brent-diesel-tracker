@@ -1,0 +1,28 @@
+# 布伦特行情台账 —— Cloudflare 定时触发器
+#
+# 部署：在 cf-cron 目录下执行
+#   npx wrangler deploy
+#
+# 配置密钥（只需一次）：
+#   npx wrangler secret put GH_TOKEN
+#
+# 这个 Worker 不提供网页，也不需要您访问它的网址；
+# 它只是按下面的 crons 时间，去调用 GitHub 的抓取工作流。
+
+name = "brent-diesel-cron"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+# 每 5 分钟触发一次（Cloudflare 免费账户最小值是 1 分钟）
+# 实测 GitHub 自带的 schedule 在本仓库从未触发，所以改由这里准时敲它。
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+GH_REPO = "foresightchina/brent-diesel-tracker"
+GH_WORKFLOW = "scrape.yml"
+GH_REF = "main"
+
+# 观察日志：npx wrangler tail
+[observability]
+enabled = true
