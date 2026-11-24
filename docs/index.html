@@ -183,7 +183,7 @@
         <div class="row"><span class="k">较前收</span><span class="v num" id="lastChg">—</span></div>
         <div class="row"><span class="k">日内振幅</span><span class="v num" id="ampVal">—</span></div>
         <div class="row"><span class="k">成交量</span><span class="v num" id="volVal">—</span></div>
-        <div class="row"><span class="k">最近抓取</span><span class="v num" id="syncVal">—</span></div>
+        <div class="row"><span class="k">行情更新</span><span class="v num" id="syncVal">—</span></div>
       </div>
     </section>
   </div>
@@ -232,9 +232,10 @@
 
   <footer>
     <div class="sep"></div>
-    <div><b>记录方式</b>　本页面由 GitHub Actions 定时任务运行，每 30 分钟抓取一次新浪财经行情，每个交易日只写入一条开盘价；开盘价当日确定后不再变动，重复抓取不会覆盖。你不必开机、不必打开本页，数据也会自动累积，全量归档在本仓库的 data/store.json。</div>
+    <div><b>记录方式</b>　归档由 GitHub Actions 定时任务完成，每 10 分钟抓取一次行情，每个交易日只写入一条开盘价；开盘价当日确定后不再变动，重复抓取不会覆盖。你不必开机、不必打开本页，数据也会自动累积，全量归档在本仓库的 data/store.json。</div>
+    <div><b>实时行情</b>　页面顶部的“最新价 / 最高 / 最低”由浏览器打开时直接向东方财富行情接口获取，每 30 秒跟随一次，不依赖后台任务是否准时。右上角同时显示两个时间：<b>实时</b>是行情快照时间，<b>归档</b>是后台落盘时间。外盘期货行情通常有 10–15 分钟延时。</div>
     <div><b>容错机制</b>　数据取自新浪财经日线接口，每次同步都会全量比对台账。即使任务中断数日，恢复后也会把缺失交易日的开盘价自动补齐，台账不会出现断档。</div>
-    <div><b>口径说明</b>　“开盘价/最高/最低”取新浪外盘期货布伦特原油当日对应字段；当日行随盘实时更新，历史行固定。“前收”为上一交易日收盘价，跳空 = 开盘价 − 前收。行情为延时数据，仅供记录核对，不构成交易依据。</div>
+    <div><b>口径说明</b>　“开盘价”与“前收”取新浪外盘期货布伦特原油口径，当日确定后不再变动；“最高/最低/最新”随盘中实时刷新。跳空 = 开盘价 − 前收。行情为延时数据，仅供记录核对，不构成交易依据。</div>
     <div class="sign">
       <span>行情数据归交易所及数据提供方所有，本页仅作记录与研究之用</span>
       <span class="by">BRETT 个人授权制作</span>
@@ -297,12 +298,15 @@ function renderTop(data){
       $('ampVal').textContent = `${fmt(latest.high - latest.low)}（${fmt(amp)}%）`;
     }
     $('volVal').textContent = latest.volume ? Number(latest.volume).toLocaleString('zh-CN') : '—';
-    $('quoteTag').textContent = latest.quoteTime ? '行情时间 ' + latest.quoteTime : '新浪财经日线';
+    $('quoteTag').textContent = LIVE ? '实时行情' : '归档日线';
   }
-  $('syncVal').textContent = meta.lastSync || '—';
+  // 这一行显示行情本身的时间，而不是后台任务的时间
+  $('syncVal').textContent = LIVE ? LIVE.timeStr : (meta.lastSync || '—');
 
-  if (meta.lastError) setStatus('err', '同步异常：' + meta.lastError);
-  else if (meta.lastSync) setStatus('ok', '运行中 · ' + meta.lastSync + ' 已同步');
+  const arch = meta.lastSync ? '归档 ' + String(meta.lastSync).slice(11) : '归档 —';
+  if (LIVE) setStatus('ok', '实时 ' + LIVE.timeStr + '　·　' + arch);
+  else if (meta.lastError) setStatus('err', '同步异常：' + meta.lastError);
+  else if (meta.lastSync) setStatus('ok', arch);
 }
 
 /* ---------------- 图表 ---------------- */
@@ -456,15 +460,96 @@ function ingestBrent(list){
   })).reverse();
 }
 
+/* ---------------- 浏览器直连实时行情 ----------------
+   东财行情接口允许跨域，所以页面自己就能取当前价，
+   不必等 GitHub Actions 的定时任务——它属于“尽力而为”，不保证准时。 */
+const LIVE_URL = 'https://push2.eastmoney.com/api/qt/stock/get' +
+  '?secid=112.B00Y&fields=f43,f44,f45,f46,f60,f86&fltt=2&invt=2';
+
+let LIVE = null;        // 最近一次拿到的实时行情
+let META = {};          // data.json 里的归档标记
+let liveTimer = null;   // 页面开着时的轮询定时器
+
+function pullLive(){
+  return fetch(LIVE_URL + '&_=' + Date.now(), { cache: 'no-store' })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(j => {
+      const d = j && j.data;
+      if (!d) throw new Error('实时接口返回为空');
+      const num = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : null);
+      const ts = d.f86 ? new Date(d.f86 * 1000) : new Date();
+      return {
+        open: num(d.f46), high: num(d.f44), low: num(d.f45),
+        last: num(d.f43), prevClose: num(d.f60),
+        date: ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
+        timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
+        fetchedAt: Date.now()
+      };
+    });
+}
+
+/** 把实时行情合并进当日记录；返回是否改动了数据 */
+function mergeLive(q){
+  if (!ALL.length || !q.last || !q.date) return false;
+
+  if (ALL[0].date === q.date){
+    // 今日已有归档行：盘中高/低/最新随盘走，开盘价与前收保持归档口径不动
+    const t = ALL[0];
+    const before = [t.high, t.low, t.last].join('|');
+    if (q.high) t.high = Math.max(t.high || 0, q.high);
+    if (q.low) t.low = t.low ? Math.min(t.low, q.low) : q.low;
+    t.last = q.last;
+    return before !== [t.high, t.low, t.last].join('|');
+  }
+
+  if (ALL[0].date < q.date){
+    // 归档落后于当日（Actions 还没跑到）：用实时行情临时补一行，标 live
+    ALL.unshift({
+      date: q.date,
+      open: q.open, high: q.high, low: q.low, last: q.last,
+      prevClose: q.prevClose, volume: null, quoteTime: '', live: true
+    });
+    return true;
+  }
+  return false;
+}
+
+async function refreshLive(){
+  try{
+    const q = await pullLive();
+    const changed = mergeLive(q);
+    LIVE = q;
+    renderTop({ meta: META });
+    if (changed){ drawChart(); renderTable(); }
+  } catch(err){
+    // 实时接口拿不到时，退回展示归档数据，不把页面搞成错误状态
+    if (!LIVE){
+      const arch = META.lastSync ? '归档 ' + String(META.lastSync).slice(11) : '归档数据';
+      setStatus('warn', arch + '　·　实时行情暂不可用');
+    }
+  }
+}
+
+function startLiveLoop(){
+  clearInterval(liveTimer);
+  liveTimer = setInterval(refreshLive, 30000);   // 页面开着时每 30 秒跟一次
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden){ clearInterval(liveTimer); }
+  else { refreshLive(); startLiveLoop(); }
+});
+
 async function boot(){
   try{
     const res = await fetch('./data.json', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    META = data.meta || {};
     ALL = ingestBrent(data.brent || []);
     renderTop(data); drawChart(); renderTable();
-    const meta = data.meta || {};
-    if (!meta.lastError) setStatus('ok', '自动更新 · 上次同步 ' + (meta.lastSync || '—'));
+    await refreshLive();      // 先取一次实时价，页面打开即最新
+    startLiveLoop();
   } catch(err){
     setStatus('err', '数据加载失败');
     $('tbody').innerHTML = '<tr><td colspan="8" class="empty">数据加载失败，请稍后刷新页面。</td></tr>';

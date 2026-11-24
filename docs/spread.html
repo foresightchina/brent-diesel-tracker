@@ -242,7 +242,7 @@
 
   <footer>
     <div class="sep"></div>
-    <div><b>数据来源</b>　两条线均取自东方财富行情接口，同源同交易日历：布伦特为 ICE 布伦特原油当月连续（美元/桶），柴油为 ICE 低硫柴油当月连续（美元/吨）。GitHub Actions 每 30 分钟自动同步，含十年历史，无需人工维护。</div>
+    <div><b>数据来源</b>　两条线均取自东方财富行情接口，同源同交易日历：布伦特为 ICE 布伦特原油当月连续（美元/桶），柴油为 ICE 低硫柴油当月连续（美元/吨）。归档由 GitHub Actions 每 10 分钟自动同步，含十年历史；页面顶部的实时行情由浏览器直接向同一接口获取，不依赖后台任务是否准时。</div>
     <div><b>折算与价差</b>　柴油按 1 吨 = 7.45 桶（密度约 0.845 kg/L）折算为美元/桶；价差 = 柴油折桶价 − 当日布伦特开盘价，价差率 = 价差 ÷ 布伦特开盘价。该价差为柴油对原油的直观溢价，可作裂解价差走势的简化观察，非炼厂标准裂解价差（后者还涉及产品得率与加工成本）。</div>
     <div><b>连续合约</b>　两条线均为当月连续合约，换月时价格会出现跳空，属正常现象，非行情异常。</div>
     <div class="sign">
@@ -300,8 +300,10 @@ function renderTop(meta){
   $('freshTag').style.background = gap > 5 ? 'rgba(209,139,44,.12)' : '#f2f4f7';
   $('freshTag').style.color = gap > 5 ? '#a5701f' : 'var(--ink-2)';
 
-  if (meta.lastError) setStatus('err', '同步异常：' + meta.lastError);
-  else if (meta.lastSync) setStatus('ok', '运行中 · ' + meta.lastSync + ' 已同步');
+  const arch = meta.lastSync ? '归档 ' + String(meta.lastSync).slice(11) : '归档 —';
+  if (LIVE) setStatus('ok', '实时 ' + LIVE.g.timeStr + '　·　' + arch);
+  else if (meta.lastError) setStatus('err', '同步异常：' + meta.lastError);
+  else if (meta.lastSync) setStatus('ok', arch);
 }
 
 /* ---------------- 图表 ---------------- */
@@ -488,11 +490,92 @@ function ingest(data){
   renderTable();
 }
 
+/* ---------------- 浏览器直连实时行情 ----------------
+   价差用开盘价计算，当日开盘后即固定；这里的作用是：
+   万一归档落后于当日，页面能自己用实时开盘价补上今天这一行。 */
+const LIVE_BASE = 'https://push2.eastmoney.com/api/qt/stock/get' +
+  '?fields=f43,f44,f45,f46,f60,f86&fltt=2&invt=2&secid=';
+
+let LIVE = null;
+let META = {};
+let liveTimer = null;
+
+function pullOne(secid){
+  return fetch(LIVE_BASE + secid + '&_=' + Date.now(), { cache: 'no-store' })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(j => {
+      const d = j && j.data;
+      if (!d) throw new Error('实时接口返回为空');
+      const num = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : null);
+      const ts = d.f86 ? new Date(d.f86 * 1000) : new Date();
+      return {
+        open: num(d.f46), high: num(d.f44), low: num(d.f45),
+        close: num(d.f43), prevClose: num(d.f60),
+        date: ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
+        timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
+      };
+    });
+}
+
+function pullLive(){
+  return Promise.all([pullOne('112.B00Y'), pullOne('112.G00Y')])
+    .then(([b, g]) => ({ b, g, date: b.date }));
+}
+
+/** 归档落后时用实时开盘价补当日行；返回是否新增 */
+function mergeLive(q){
+  if (!ROWS.length || !q.b.open || !q.g.open) return false;
+  if (q.b.date !== q.g.date) return false;          // 两个品种交易日不一致，宁可不补
+  const lastDate = ROWS[ROWS.length - 1].date;
+  if (lastDate >= q.date) return false;             // 归档已是最新，不动
+
+  const gBbl = q.g.open / BBL_PER_MT;
+  const spread = gBbl - q.b.open;
+  ROWS.push({
+    date: q.date,
+    b: { o: q.b.open, h: q.b.high, l: q.b.low, c: q.b.close },
+    g: { o: q.g.open, h: q.g.high, l: q.g.low, c: q.g.close },
+    gBbl, spread,
+    rate: q.b.open ? spread / q.b.open * 100 : null,
+    live: true
+  });
+  return true;
+}
+
+async function refreshLive(){
+  try{
+    const q = await pullLive();
+    const added = mergeLive(q);
+    LIVE = q;
+    if (added){ renderTop(META); drawAll(); renderTable(); }
+    else renderTop(META);
+  } catch(err){
+    if (!LIVE){
+      const arch = META.lastSync ? '归档 ' + String(META.lastSync).slice(11) : '归档数据';
+      setStatus('warn', arch + '　·　实时行情暂不可用');
+    }
+  }
+}
+
+function startLiveLoop(){
+  clearInterval(liveTimer);
+  liveTimer = setInterval(refreshLive, 30000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden){ clearInterval(liveTimer); }
+  else { refreshLive(); startLiveLoop(); }
+});
+
 async function boot(){
   try{
     const res = await fetch('./data.json', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    ingest(await res.json());
+    const data = await res.json();
+    META = data.meta || {};
+    ingest(data);
+    await refreshLive();
+    startLiveLoop();
   } catch(err){
     setStatus('err', '数据加载失败');
     $('tbody').innerHTML = '<tr><td colspan="6" class="empty">数据加载失败，请稍后刷新</td></tr>';
