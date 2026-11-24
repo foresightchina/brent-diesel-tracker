@@ -25,7 +25,7 @@
    - Branch 选 **main**，目录选 **/docs**
    - 点 **Save**
 4. 等 1–2 分钟，页面地址是 `https://<你的用户名>.github.io/<仓库名>/`
-   价差页是 `https://<你的用户名>.github.io/<仓库名>/spread`
+   价差页是 `https://<你的用户名>.github.io/<仓库名>/spread.html`
 5. 验证定时任务：仓库 **Actions** 标签页 → 左侧「抓取行情并更新台账」→
    右侧 **Run workflow** → 运行一次。绿色对勾即表示成功。
 
