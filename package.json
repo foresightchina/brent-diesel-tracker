@@ -1,0 +1,13 @@
+{
+  "name": "brent-diesel-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "布伦特原油每日开盘价台账 · 布伦特与柴油（EN590 基准）价差台账",
+  "scripts": {
+    "scrape": "node scripts/scrape.js",
+    "serve": "node scripts/serve.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

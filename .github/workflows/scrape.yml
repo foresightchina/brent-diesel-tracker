@@ -1,0 +1,54 @@
+name: 抓取行情并更新台账
+
+on:
+  # 每 30 分钟跑一次（GitHub 用的是 UTC，对本项目无影响，因为归档按交易日而非钟点）
+  # 注意：GitHub 官方不保证准时，高峰期可能延迟十几分钟甚至跳过某次。
+  # 对“每日开盘价”没有影响：一天记一次，晚一小时也是同一个数。
+  schedule:
+    - cron: '*/30 * * * *'
+
+  # 允许在网页上手动点一下立即运行，首次部署时用来验证
+  workflow_dispatch:
+
+  # 第一次推送代码时也跑一次，让页面立刻有数据
+  push:
+    branches: [main, master]
+
+# 提交数据需要写权限；其余权限一律不给
+permissions:
+  contents: write
+
+# 同一时间只允许一个抓取任务，避免两次运行同时改文件造成冲突
+concurrency:
+  group: scrape-market-data
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 准备 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 抓取行情并归档
+        run: node scripts/scrape.js
+
+      - name: 提交数据变更
+        run: |
+          git config user.name "market-data-bot"
+          git config user.email "market-data-bot@users.noreply.github.com"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "data: 更新行情台账 $(date -u '+%Y-%m-%d %H:%M UTC')"
+            # 万一远端在此期间被改过，先变基再推，避免一次无谓的失败
+            git push || { git pull --rebase --autostash && git push; }
+          else
+            echo "数据无变化，跳过提交"
+          fi

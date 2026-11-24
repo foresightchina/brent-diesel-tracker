@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>布伦特 × 柴油（EN590 基准）· 价差台账</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --line:#e6e8ec; --line-soft:#eef0f3;
+    --ink:#15181f; --ink-2:#5a6272; --ink-3:#8a92a2;
+    --brand:#1b3a5c; --oil:#b0823c; --up:#c93a35; --down:#12855a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .wrap{max-width:1120px;margin:0 auto;padding:40px 24px 72px}
+
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:22px}
+  .brand{display:flex;align-items:center;gap:14px}
+  .mark{width:38px;height:38px;border-radius:9px;background:var(--brand);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .mark svg{width:20px;height:20px}
+  h1{font-size:21px;font-weight:650;letter-spacing:-.01em;line-height:1.25}
+  .sub{font-size:12.5px;color:var(--ink-3);margin-top:2px}
+  .sub a{color:var(--ink-2);text-decoration:none;border-bottom:1px dotted var(--ink-3)}
+  .sub a:hover{color:var(--brand);border-color:var(--brand)}
+  .status{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--down);flex:0 0 auto;box-shadow:0 0 0 3px rgba(18,133,90,.12)}
+  .dot.warn{background:#d18b2c;box-shadow:0 0 0 3px rgba(209,139,44,.14)}
+  .dot.err{background:var(--up);box-shadow:0 0 0 3px rgba(201,58,53,.12)}
+
+  .notice{display:flex;gap:10px;align-items:flex-start;background:#fbf8f2;border:1px solid #eee3d0;
+    border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:#7a663f;line-height:1.75}
+  .notice b{color:#6b562f;font-weight:650;flex:0 0 auto}
+  .notice span{min-width:0}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;min-width:0}
+  .tabs{display:flex;gap:7px;margin-bottom:18px;flex-wrap:wrap}
+  .tabs a{font-size:12.5px;font-weight:500;padding:7px 15px;border-radius:8px;text-decoration:none;
+    color:var(--ink-2);background:#fff;border:1px solid var(--line);transition:.15s;display:inline-flex;align-items:center;gap:7px}
+  .tabs a:hover{border-color:#c9d1dd;color:var(--ink)}
+  .tabs a.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .tabs a .pip2{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.55}
+  .grid{display:grid;grid-template-columns:1.15fr .85fr;gap:16px;margin-bottom:16px}
+  .grid>*{min-width:0}
+
+  .hero{padding:26px 28px 24px;position:relative;overflow:hidden}
+  .hero::after{content:"";position:absolute;right:-40px;top:-40px;width:180px;height:180px;border-radius:50%;
+    background:radial-gradient(circle,rgba(176,130,60,.07),transparent 70%)}
+  .label{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+  .hero-price{display:flex;align-items:baseline;gap:8px;margin:10px 0 2px}
+  .hero-price .v{font-size:50px;font-weight:680;letter-spacing:-.025em;line-height:1}
+  .hero-price .u{font-size:14px;color:var(--ink-3);font-weight:500}
+  .chg{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;margin-top:4px}
+  .chg.up{color:var(--up)} .chg.down{color:var(--down)} .chg.flat{color:var(--ink-3)}
+  .hero-foot{display:flex;gap:26px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line-soft);flex-wrap:wrap}
+  .kv .k{font-size:11.5px;color:var(--ink-3)}
+  .kv .v{font-size:15px;font-weight:600;margin-top:1px}
+
+  .snap{padding:22px 24px;min-width:0}
+  .snap-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+  .rows{display:flex;flex-direction:column;min-width:0}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 0;
+    border-bottom:1px solid var(--line-soft);font-size:13px}
+  .row:last-child{border-bottom:none}
+  .row .k{color:var(--ink-2);white-space:nowrap;display:flex;align-items:center;gap:6px}
+  .row .v{font-weight:600;flex:0 0 auto;text-align:right;white-space:nowrap}
+  .swatch{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
+  .tag{font-size:11px;padding:1px 7px;border-radius:5px;background:#f2f4f7;color:var(--ink-2);font-weight:500;white-space:nowrap}
+
+  .chart-card{padding:22px 24px 14px;margin-bottom:16px}
+  .chart-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:8px;flex-wrap:wrap}
+  .chart-title{font-size:14px;font-weight:650}
+  .chart-meta{font-size:12px;color:var(--ink-3);margin-top:1px}
+  .legend{display:flex;gap:16px;font-size:11.5px;color:var(--ink-2);margin-top:6px;flex-wrap:wrap}
+  .legend i{display:inline-block;width:10px;height:3px;vertical-align:middle;margin-right:5px;border-radius:2px}
+  .seg{display:flex;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fafbfc}
+  .seg button{border:none;background:transparent;font:inherit;font-size:12px;color:var(--ink-2);
+    padding:5px 11px;cursor:pointer;border-right:1px solid var(--line);transition:.15s}
+  .seg button:last-child{border-right:none}
+  .seg button:hover{background:#f1f3f6;color:var(--ink)}
+  .seg button.on{background:var(--brand);color:#fff}
+  #chart{width:100%;height:auto;display:block;overflow:visible}
+  #spread{width:100%;height:auto;display:block;overflow:visible;margin-top:2px}
+  .tip{position:fixed;pointer-events:none;background:var(--brand);color:#fff;font-size:11.5px;
+    padding:7px 10px;border-radius:6px;line-height:1.6;opacity:0;transition:opacity .12s;z-index:20;white-space:nowrap}
+  .tip.on{opacity:1}
+  .tip .r{color:rgba(255,255,255,.72)}
+
+  .table-card{padding:0;overflow:hidden}
+  .table-head{display:flex;align-items:center;justify-content:space-between;padding:20px 24px 14px;gap:16px;flex-wrap:wrap}
+  .tbl-scroll{max-height:560px;overflow:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{position:sticky;top:0;background:#fafbfc;z-index:2;font-weight:600;font-size:11.5px;letter-spacing:.04em;
+    color:var(--ink-3);text-align:right;padding:9px 14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);white-space:nowrap}
+  thead th:first-child{text-align:left;padding-left:24px}
+  thead th:last-child{padding-right:24px}
+  tbody td{padding:10px 14px;text-align:right;border-bottom:1px solid var(--line-soft);white-space:nowrap}
+  tbody td:first-child{text-align:left;padding-left:24px}
+  tbody td:last-child{padding-right:24px}
+  tbody tr:hover td{background:#fafbfc}
+  .d-date{font-weight:600;color:var(--ink)}
+  .d-week{color:var(--ink-3);font-size:11.5px;margin-left:7px}
+  .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--ink-3)}
+  .more{padding:14px;text-align:center;border-top:1px solid var(--line-soft)}
+  .more button{font:inherit;font-size:12.5px;color:var(--brand);background:#f7f9fb;border:1px solid var(--line);
+    border-radius:7px;padding:7px 18px;cursor:pointer}
+  .more button:hover{background:#eef2f7}
+  .empty{padding:56px 24px;text-align:center;color:var(--ink-3);font-size:13px}
+
+  footer{margin-top:26px;font-size:12px;color:var(--ink-3);line-height:1.85}
+  footer b{color:var(--ink-2);font-weight:600}
+  .sep{height:1px;background:var(--line);margin:18px 0 14px}
+  .sign{margin-top:16px;padding-top:13px;border-top:1px solid var(--line);display:flex;align-items:center;
+    justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+  .sign .by{color:var(--ink);font-weight:650;font-size:12.5px;letter-spacing:.08em}
+
+  @media (max-width:820px){
+    .wrap{padding:24px 16px 56px}
+    .grid{grid-template-columns:1fr}
+    .hero{padding:22px 20px}
+    .hero-price .v{font-size:44px}
+    .snap{padding:20px 18px}
+    .chart-card{padding:18px 14px 10px}
+    .table-head{padding:18px 16px 12px}
+    table{font-size:12.5px}
+    thead th,tbody td{padding:9px 8px}
+    thead th:first-child,tbody td:first-child{padding-left:14px}
+    thead th:last-child,tbody td:last-child{padding-right:14px}
+    .d-week{display:none}
+    /* 手机端保留：日期 / 布伦特 / 柴油吨价 / 价差 */
+    thead th:nth-child(4),tbody td:nth-child(4),
+    thead th:nth-child(6),tbody td:nth-child(6){display:none}
+    .seg button{padding:5px 9px;font-size:11.5px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 17l5.5-5.5 3.5 3.5L21 6"/><path d="M15 6h6v6"/>
+        </svg>
+      </div>
+      <div>
+        <h1>布伦特 × 柴油（EN590 基准）· 价差台账</h1>
+        <div class="sub">ICE 布伦特原油 · ICE 低硫柴油（Gasoil）· 每交易日自动归档，按 1 吨 = 7.45 桶折算对照</div>
+      </div>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">正在同步…</span></div>
+  </header>
+
+  <nav class="tabs">
+    <a href="/"><span class="pip2"></span>布伦特开盘价</a>
+    <a href="/spread" class="on"><span class="pip2"></span>布伦特 × 柴油价差</a>
+  </nav>
+
+  <div class="notice">
+    <b>口径</b>
+    <span>柴油线取 ICE 低硫柴油（Gasoil，10ppm 超低硫，与 EN590 同规格）期货，交割地 ARA，是全球柴油定价的公开锚点。
+    新加坡 EN590 现货成交价 = MOPS（Platts Singapore 10ppm）± 升贴水，MOPS 为付费数据、无免费接口，通常与 ICE Gasoil 相差 5–20 美元/吨。
+    因此本页是可自动获取的柴油基准对照，用于跟踪柴油对原油的溢价走势，不等同于新加坡现货成交价。
+    本页布伦特与柴油同取东方财富当月连续，两条线可逐日对齐；首页布伦特为新浪口径，换月前后两页数值可能略有差异，属连续合约规则不同。</span>
+  </div>
+
+  <div class="grid">
+    <section class="card hero">
+      <div class="label">柴油对原油价差</div>
+      <div class="hero-price">
+        <span class="v num" id="spreadVal">—</span>
+        <span class="u">USD / 桶</span>
+      </div>
+      <div class="chg flat" id="spreadSub">加载中…</div>
+      <div class="hero-foot">
+        <div class="kv"><div class="k">交易日</div><div class="v" id="asOf">—</div></div>
+        <div class="kv"><div class="k">柴油折桶价</div><div class="v num" id="gBbl">—</div></div>
+        <div class="kv"><div class="k">布伦特开盘</div><div class="v num" id="bOpen">—</div></div>
+      </div>
+    </section>
+
+    <section class="card snap">
+      <div class="snap-head">
+        <div class="label">最新对照</div>
+        <span class="tag" id="freshTag">—</span>
+      </div>
+      <div class="rows">
+        <div class="row"><span class="k"><i class="swatch" style="background:#1b3a5c"></i>布伦特开盘</span><span class="v num" id="rBrent">—</span></div>
+        <div class="row"><span class="k"><i class="swatch" style="background:#b0823c"></i>ICE 低硫柴油</span><span class="v num" id="rGasoil">—</span></div>
+        <div class="row"><span class="k">柴油折桶</span><span class="v num" id="rGBbl">—</span></div>
+        <div class="row"><span class="k">价差 / 价差率</span><span class="v num" id="rSpread">—</span></div>
+        <div class="row"><span class="k">已归档交易日</span><span class="v num" id="rDays">—</span></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card chart-card">
+    <div class="chart-head">
+      <div>
+        <div class="chart-title">价格对照</div>
+        <div class="chart-meta" id="chartMeta">—</div>
+        <div class="legend">
+          <span><i style="background:#1b3a5c"></i>布伦特开盘（美元/桶）</span>
+          <span><i style="background:#b0823c"></i>柴油折桶（美元/桶）</span>
+        </div>
+      </div>
+      <div class="seg" id="seg">
+        <button data-r="22">近 1 月</button>
+        <button data-r="66">近 3 月</button>
+        <button data-r="250">近 1 年</button>
+        <button data-r="0" class="on">全部</button>
+      </div>
+    </div>
+    <svg id="chart" viewBox="0 0 960 300" preserveAspectRatio="none"></svg>
+    <svg id="spread" viewBox="0 0 960 130" preserveAspectRatio="none"></svg>
+  </section>
+
+  <section class="card table-card">
+    <div class="table-head">
+      <div class="chart-title">价差台账</div>
+      <div class="chart-meta" id="tableMeta">—</div>
+    </div>
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>交易日</th><th>布伦特开盘</th><th>柴油（美元/吨）</th><th>柴油折桶</th><th>价差</th><th>价差率</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="6" class="empty">加载中…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="more" id="moreWrap" style="display:none">
+      <button id="moreBtn">加载更多</button>
+    </div>
+  </section>
+
+  <footer>
+    <div class="sep"></div>
+    <div><b>数据来源</b>　两条线均取自东方财富行情接口，同源同交易日历：布伦特为 ICE 布伦特原油当月连续（美元/桶），柴油为 ICE 低硫柴油当月连续（美元/吨）。GitHub Actions 每 30 分钟自动同步，含十年历史，无需人工维护。</div>
+    <div><b>折算与价差</b>　柴油按 1 吨 = 7.45 桶（密度约 0.845 kg/L）折算为美元/桶；价差 = 柴油折桶价 − 当日布伦特开盘价，价差率 = 价差 ÷ 布伦特开盘价。该价差为柴油对原油的直观溢价，可作裂解价差走势的简化观察，非炼厂标准裂解价差（后者还涉及产品得率与加工成本）。</div>
+    <div><b>连续合约</b>　两条线均为当月连续合约，换月时价格会出现跳空，属正常现象，非行情异常。</div>
+    <div class="sign">
+      <span>行情数据归交易所及数据提供方所有，本页仅作记录与研究之用，不构成交易建议</span>
+      <span class="by">BRETT 个人授权制作</span>
+    </div>
+  </footer>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d = 2) => (n === null || n === undefined || !isFinite(n)) ? '—' : Number(n).toFixed(d);
+const WEEK = ['周日','周一','周二','周三','周四','周五','周六'];
+const PAGE = 100;
+const BBL_PER_MT = 7.45;
+
+let ROWS = [];   // 已配对，升序
+let RANGE = 0;
+let LIMIT = PAGE;
+
+function weekday(s){ const d = new Date(s + 'T00:00:00'); return isNaN(d) ? '' : WEEK[d.getDay()]; }
+function setStatus(kind, text){
+  $('dot').className = 'dot' + (kind === 'ok' ? '' : kind === 'warn' ? ' warn' : ' err');
+  $('statusText').textContent = text;
+}
+
+/* ---------------- 顶部 ---------------- */
+function renderTop(meta){
+  const last = ROWS[ROWS.length - 1];
+  if (!last){
+    setStatus('err', '暂无可用数据');
+    return;
+  }
+
+  $('spreadVal').textContent = (last.spread >= 0 ? '+' : '') + fmt(last.spread);
+  const el = $('spreadSub');
+  el.className = 'chg ' + (last.spread >= 0 ? 'up' : 'down');
+  el.innerHTML = `柴油较布伦特溢价 ${fmt(last.rate)}%　·　${last.date} ${weekday(last.date)}`;
+
+  $('asOf').textContent = last.date + ' ' + weekday(last.date);
+  $('gBbl').textContent = fmt(last.gBbl);
+  $('bOpen').textContent = fmt(last.b.o);
+
+  $('rBrent').textContent = fmt(last.b.o);
+  $('rGasoil').textContent = Number(last.g.o).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' $/吨';
+  $('rGBbl').textContent = fmt(last.gBbl);
+  $('rSpread').textContent = (last.spread >= 0 ? '+' : '') + fmt(last.spread) + '（' + fmt(last.rate) + '%）';
+  $('rDays').textContent = ROWS.length.toLocaleString('zh-CN');
+
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+  const gap = Math.round((new Date(today) - new Date(last.date)) / 86400000);
+  $('freshTag').textContent = gap <= 0 ? '今日行情' : gap === 1 ? '昨日行情' : `${gap} 天前`;
+  $('freshTag').style.background = gap > 5 ? 'rgba(209,139,44,.12)' : '#f2f4f7';
+  $('freshTag').style.color = gap > 5 ? '#a5701f' : 'var(--ink-2)';
+
+  if (meta.lastError) setStatus('err', '同步异常：' + meta.lastError);
+  else if (meta.lastSync) setStatus('ok', '运行中 · ' + meta.lastSync + ' 已同步');
+}
+
+/* ---------------- 图表 ---------------- */
+function niceStep(rough){
+  const p = Math.pow(10, Math.floor(Math.log10(rough)));
+  const r = rough / p;
+  const m = r <= 1 ? 1 : r <= 2 ? 2 : r <= 2.5 ? 2.5 : r <= 5 ? 5 : 10;
+  return m * p;
+}
+
+function drawAll(){
+  if (!ROWS.length){
+    $('chart').innerHTML = `<text x="480" y="150" text-anchor="middle" fill="#8a92a2" font-size="13">暂无数据</text>`;
+    $('spread').innerHTML = '';
+    return;
+  }
+  const src = RANGE > 0 ? ROWS.slice(-RANGE) : ROWS.slice();
+  drawPrice(src);
+  drawSpread(src);
+}
+
+function drawPrice(src){
+  const svg = $('chart');
+  const W = 960, H = 300, PL = 52, PR = 16, PT = 16, PB = 26;
+  const n = src.length;
+  svg.innerHTML = '';
+
+  const all = src.flatMap(r => [r.b.o, r.gBbl]);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const pad = (hi - lo) * .12 || Math.max(1, hi * .02);
+  lo -= pad; hi += pad;
+  let step = niceStep((hi - lo) / 4);
+  while ((hi - lo) / step > 7) step *= 2;
+
+  const X = i => n === 1 ? (PL + (W - PL - PR) / 2) : PL + i * (W - PL - PR) / (n - 1);
+  const Y = v => PT + (1 - (v - lo) / (hi - lo)) * (H - PT - PB);
+
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step){
+    const y = Y(v);
+    svg.insertAdjacentHTML('beforeend',
+      `<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#eef0f3"/>
+       <text x="${PL-10}" y="${y+4}" text-anchor="end" fill="#8a92a2" font-size="11">${v.toFixed(v % 1 ? 1 : 0)}</text>`);
+  }
+
+  const bPts = src.map((r,i) => `${X(i)},${Y(r.b.o)}`).join(' ');
+  const gPts = src.map((r,i) => `${X(i)},${Y(r.gBbl)}`).join(' ');
+
+  svg.insertAdjacentHTML('beforeend',
+    `<polyline points="${gPts}" fill="none" stroke="#b0823c" stroke-width="1.7"
+      stroke-linejoin="round" stroke-linecap="round"/>`);
+  svg.insertAdjacentHTML('beforeend',
+    `<polyline points="${bPts}" fill="none" stroke="#1b3a5c" stroke-width="1.7"
+      stroke-linejoin="round" stroke-linecap="round"/>`);
+
+  if (n <= 40){
+    src.forEach((r,i) => {
+      svg.insertAdjacentHTML('beforeend', `<circle cx="${X(i)}" cy="${Y(r.b.o)}" r="2.2" fill="#fff" stroke="#1b3a5c" stroke-width="1.4"/>`);
+      svg.insertAdjacentHTML('beforeend', `<circle cx="${X(i)}" cy="${Y(r.gBbl)}" r="2.2" fill="#fff" stroke="#b0823c" stroke-width="1.4"/>`);
+    });
+  }
+
+  const lx = X(n-1);
+  svg.insertAdjacentHTML('beforeend',
+    `<circle cx="${lx}" cy="${Y(src[n-1].b.o)}" r="3.4" fill="#1b3a5c"/>
+     <circle cx="${lx}" cy="${Y(src[n-1].gBbl)}" r="3.4" fill="#b0823c"/>`);
+
+  const xs = Math.max(1, Math.ceil(n / 7));
+  src.forEach((r,i) => {
+    if (i % xs !== 0 && i !== n-1) return;
+    svg.insertAdjacentHTML('beforeend',
+      `<text x="${X(i)}" y="${H-6}" text-anchor="middle" fill="#8a92a2" font-size="10.5">${r.date.slice(2)}</text>`);
+  });
+
+  $('chartMeta').textContent = `${src[0].date} 至 ${src[n-1].date} · ${n} 个交易日`;
+
+  const tip = $('tip');
+  svg.onmousemove = (e) => {
+    const rect = svg.getBoundingClientRect();
+    const sx = (e.clientX - rect.left) / rect.width * W;
+    let best = 0, bd = Infinity;
+    src.forEach((r,i) => { const d = Math.abs(X(i) - sx); if (d < bd){ bd = d; best = i; } });
+    const r = src[best];
+    tip.className = 'tip on';
+    tip.innerHTML = `<b>${r.date}</b><br>` +
+      `布伦特 ${fmt(r.b.o)}　<span class="r">柴油 ${fmt(r.g.o)} $/吨</span><br>` +
+      `折桶 ${fmt(r.gBbl)}　价差 ${r.spread >= 0 ? '+' : ''}${fmt(r.spread)}`;
+    tip.style.left = Math.min(e.clientX + 12, innerWidth - 230) + 'px';
+    tip.style.top = Math.max(8, e.clientY - 70) + 'px';
+  };
+  svg.onmouseleave = () => { tip.className = 'tip'; };
+}
+
+function drawSpread(src){
+  const svg = $('spread');
+  const W = 960, H = 130, PL = 52, PR = 16, PT = 12, PB = 22;
+  const n = src.length;
+  svg.innerHTML = '';
+
+  const vals = src.map(r => r.spread);
+  const minV = Math.min(...vals, 0), maxV = Math.max(...vals, 0);
+  const padv = (maxV - minV) * .18 || 1;
+  let step = niceStep((maxV - minV) / 2) || 1;
+  while ((maxV - minV) / step > 4) step *= 2;
+
+  const X = i => n === 1 ? (PL + (W - PL - PR) / 2) : PL + i * (W - PL - PR) / (n - 1);
+  const Y = v => PT + (1 - (v - (minV - padv)) / ((maxV + padv) - (minV - padv))) * (H - PT - PB);
+
+  for (let v = Math.ceil((minV - padv) / step) * step; v <= maxV + padv + 1e-9; v += step){
+    const y = Y(v);
+    svg.insertAdjacentHTML('beforeend',
+      `<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#eef0f3"/>
+       <text x="${PL-10}" y="${y+4}" text-anchor="end" fill="#8a92a2" font-size="10.5">${v.toFixed(v % 1 ? 1 : 0)}</text>`);
+  }
+
+  const pts = src.map((r,i) => `${X(i)},${Y(r.spread)}`).join(' ');
+  const baseY = Y(0);
+  svg.insertAdjacentHTML('beforeend', `
+    <defs><linearGradient id="gs" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#b0823c" stop-opacity=".2"/>
+      <stop offset="100%" stop-color="#b0823c" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="M ${X(0)},${baseY} L ${pts.split(' ').join(' L ')} L ${X(n-1)},${baseY} Z" fill="url(#gs)"/>`);
+  svg.insertAdjacentHTML('beforeend',
+    `<polyline points="${pts}" fill="none" stroke="#b0823c" stroke-width="1.6"
+      stroke-linejoin="round" stroke-linecap="round"/>`);
+  svg.insertAdjacentHTML('beforeend',
+    `<text x="${PL}" y="${H-4}" fill="#8a92a2" font-size="10.5">价差走势（美元/桶　柴油折桶 − 布伦特开盘）</text>`);
+}
+
+/* ---------------- 表格 ---------------- */
+function renderTable(){
+  const tb = $('tbody');
+  $('tableMeta').textContent = ROWS.length ? `共 ${ROWS.length.toLocaleString('zh-CN')} 个交易日，按时间倒序` : '';
+
+  if (!ROWS.length){
+    tb.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
+    $('moreWrap').style.display = 'none';
+    return;
+  }
+
+  const desc = ROWS.slice().reverse();
+  const rows = desc.slice(0, LIMIT);
+
+  tb.innerHTML = rows.map((r) => {
+    const cls = r.spread >= 0 ? 'up' : 'down';
+    return `<tr>
+      <td><span class="d-date">${r.date}</span><span class="d-week">${weekday(r.date)}</span></td>
+      <td class="num">${fmt(r.b.o)}</td>
+      <td class="num" style="color:var(--ink-2)">${Number(r.g.o).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+      <td class="num">${fmt(r.gBbl)}</td>
+      <td class="num ${cls}" style="font-weight:600">${r.spread >= 0 ? '+' : ''}${fmt(r.spread)}</td>
+      <td class="num ${cls}">${r.rate >= 0 ? '+' : ''}${fmt(r.rate)}%</td>
+    </tr>`;
+  }).join('');
+
+  const rest = desc.length - rows.length;
+  $('moreWrap').style.display = rest > 0 ? '' : 'none';
+  $('moreBtn').textContent = `加载更多（还有 ${rest.toLocaleString('zh-CN')} 个交易日）`;
+}
+
+/* ---------------- 启动 ---------------- */
+function ingest(data){
+  const gMap = new Map((data.gasoil || []).map(r => [r.date, r]));
+  ROWS = (data.emBrent || [])
+    .filter(b => gMap.has(b.date) && b.open > 0)
+    .map(b => {
+      const g = gMap.get(b.date);
+      if (!(g.open > 0)) return null;
+      const gBbl = g.open / BBL_PER_MT;
+      const spread = gBbl - b.open;
+      return {
+        date: b.date,
+        b: { o: b.open, h: b.high, l: b.low, c: b.close },
+        g: { o: g.open, h: g.high, l: g.low, c: g.close },
+        gBbl, spread,
+        rate: b.open ? spread / b.open * 100 : null
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.date < b.date ? -1 : 1);
+
+  renderTop(data.meta || {});
+  drawAll();
+  renderTable();
+}
+
+async function boot(){
+  try{
+    const res = await fetch('./data.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    ingest(await res.json());
+  } catch(err){
+    setStatus('err', '数据加载失败');
+    $('tbody').innerHTML = '<tr><td colspan="6" class="empty">数据加载失败，请稍后刷新</td></tr>';
+  }
+}
+
+$('seg').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  [...$('seg').children].forEach(x => x.classList.toggle('on', x === b));
+  RANGE = Number(b.dataset.r);
+  drawAll();
+});
+
+$('moreBtn').addEventListener('click', () => { LIMIT += PAGE; renderTable(); });
+
+boot();
+</script>
+</body>
+</html>
