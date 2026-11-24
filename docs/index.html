@@ -463,17 +463,22 @@ function ingestBrent(list){
 /* ---------------- 浏览器直连实时行情 ----------------
    东财行情接口允许跨域，所以页面自己就能取当前价，
    不必等 GitHub Actions 的定时任务——它属于“尽力而为”，不保证准时。 */
-const LIVE_URL = 'https://push2.eastmoney.com/api/qt/stock/get' +
-  '?secid=112.B00Y&fields=f43,f44,f45,f46,f60,f86&fltt=2&invt=2';
+const LIVE_PATH = '/api/qt/stock/get?secid=112.B00Y&fields=f43,f44,f45,f46,f60,f86&fltt=2&invt=2';
+// 东财两个入口：主站偶尔被风控掐断，延时站兜底
+const LIVE_HOSTS = ['https://push2.eastmoney.com', 'https://push2delay.eastmoney.com'];
 
 let LIVE = null;        // 最近一次拿到的实时行情
 let META = {};          // data.json 里的归档标记
 let liveTimer = null;   // 页面开着时的轮询定时器
+let liveFail = 0;       // 连续失败次数，用来放缓轮询
 
-function pullLive(){
-  return fetch(LIVE_URL + '&_=' + Date.now(), { cache: 'no-store' })
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(j => {
+async function pullLive(){
+  let lastErr = null;
+  for (const host of LIVE_HOSTS){
+    try{
+      const r = await fetch(host + LIVE_PATH + '&_=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
       const d = j && j.data;
       if (!d) throw new Error('实时接口返回为空');
       const num = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : null);
@@ -485,7 +490,11 @@ function pullLive(){
         timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
         fetchedAt: Date.now()
       };
-    });
+    }catch(err){
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('实时源不可用');
 }
 
 /** 把实时行情合并进当日记录；返回是否改动了数据 */
@@ -519,24 +528,31 @@ async function refreshLive(){
     const q = await pullLive();
     const changed = mergeLive(q);
     LIVE = q;
+    liveFail = 0;
     renderTop({ meta: META });
     if (changed){ drawChart(); renderTable(); }
   } catch(err){
-    // 实时接口拿不到时，退回展示归档数据，不把页面搞成错误状态
+    // 实时接口拿不到不是故障：东财本身就是延时行情，归档那条线照常在看
+    liveFail++;
     if (!LIVE){
       const arch = META.lastSync ? '归档 ' + String(META.lastSync).slice(11) : '归档数据';
-      setStatus('warn', arch + '　·　实时行情暂不可用');
+      setStatus('warn', arch + '　·　延时行情');
     }
+    if (liveFail === 3) startLiveLoop();   // 连着三次取不到就降到低速轮询
   }
 }
 
 function startLiveLoop(){
-  clearInterval(liveTimer);
-  liveTimer = setInterval(refreshLive, 30000);   // 页面开着时每 30 秒跟一次
+  clearTimeout(liveTimer);
+  const gap = liveFail >= 3 ? 300000 : 30000;   // 正常 30 秒；连续失败降为 5 分钟
+  liveTimer = setTimeout(async () => {
+    await refreshLive();
+    startLiveLoop();
+  }, gap);
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden){ clearInterval(liveTimer); }
+  if (document.hidden){ clearTimeout(liveTimer); }
   else { refreshLive(); startLiveLoop(); }
 });
 
