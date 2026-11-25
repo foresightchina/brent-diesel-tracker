@@ -242,24 +242,24 @@ function writeJson(file, obj) {
   const stamp = nowInShanghai();
 
   // 只在数据真的变了才落盘，避免每半小时产生一个无意义提交
-  const fingerprint = (s) => JSON.stringify({ b: s.brent, e: s.emBrent, g: s.gasoil });
+  const fingerprint = (s) => JSON.stringify({ b: s.brent, e: s.emBrent, g: s.gasoil, l: s.meta.lastError });
   const before = fingerprint(store);
 
-  const run = async (fn, label) => {
+  const run = async (fn, label, key) => {
     try {
       return { ok: true, value: await fn() };
     } catch (err) {
       console.error(`[sync] ${label} 失败：${err.message}`);
-      return { ok: false, error: err.message };
+      return { ok: false, error: err.message, label, key };
     }
   };
 
   // 串行抓取：并发请求容易触发对方风控
-  const r1 = await run(fetchSinaBrent, '新浪布伦特');
+  const r1 = await run(fetchSinaBrent, '新浪布伦特', 'brent');
   await sleep(500);
-  const r2 = await run(() => fetchKline(SECID_BRENT, 10, 300), '东财布伦特');
+  const r2 = await run(() => fetchKline(SECID_BRENT, 10, 300), '东财布伦特', 'emBrent');
   await sleep(500);
-  const r3 = await run(() => fetchKline(SECID_GASOIL, 150, 3000), '东财柴油');
+  const r3 = await run(() => fetchKline(SECID_GASOIL, 150, 3000), '东财柴油', 'gasoil');
 
   const failed = [r1, r2, r3].filter((r) => !r.ok);
 
@@ -280,14 +280,27 @@ function writeJson(file, obj) {
 
   store.meta.brentCount = store.brent.length;
   store.meta.gasoilCount = store.gasoil.length;
-  store.meta.lastError = failed.length ? failed.map((r) => r.error).join('；') : null;
+
+  // 只有“真的缺了最新一天”才算异常。行情源偶发抖动时重试一次就过得去，
+  // 若把这类抖动也写进 lastError，页面会挂一行红字，而数据其实是齐的。
+  const lastDateOf = (arr) => (arr && arr.length ? arr[arr.length - 1].date : '');
+  const refDate = ['brent', 'emBrent', 'gasoil']
+    .map((k) => lastDateOf(store[k]))
+    .sort()
+    .pop();
+  const failedReal = failed.filter((f) => lastDateOf(store[f.key]) < refDate);
+
+  store.meta.lastError = failedReal.length
+    ? failedReal.map((r) => `${r.label}：${r.error}`).join('；')
+    : null;
 
   console.log(
     `[sync] 新浪布伦特 +${a1} / 东财布伦特 +${a2} / 柴油 +${a3}` +
       `　库存：${store.brent.length} ${store.emBrent.length} ${store.gasoil.length}`
   );
 
-  if (failed.length) console.log(`::warning::部分数据源失败：${store.meta.lastError}`);
+  if (failedReal.length) console.log(`::warning::部分数据源未取到最新一天：${store.meta.lastError}`);
+  else if (failed.length) console.log('[sync] 本次有个别源抖动，但最新一天的数据已在库，不记为异常');
 
   // 首次运行时 docs/data.json 还不存在，即使数据没变化也必须生成一份，
   // 否则页面打开是空的
