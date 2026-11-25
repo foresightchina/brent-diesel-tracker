@@ -41,6 +41,9 @@ const SINA_KLINE =
 // 新浪外盘实时快照（有 Referer 防盗链，必须带来源页）
 const SINA_RT = 'https://hq.sinajs.cn/list=hf_OIL';
 
+// 最近一次成功取到的实时快照，供校正当日开盘价使用
+let SINA_RT_SNAP = null;
+
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -140,6 +143,7 @@ async function fetchSinaBrent() {
       // 用实时接口的“开盘”字段校正当日这一根，页面才与新浪行情页一致。
       try {
         const rt = await fetchSinaRealtime();
+        SINA_RT_SNAP = rt;
         const last = out[out.length - 1];
         if (rt.date === last.date) {
           if (rt.open && Math.abs(rt.open - last.open) > 0.004) {
@@ -313,6 +317,34 @@ function writeJson(file, obj) {
 
   for (const k of ['brent', 'emBrent', 'gasoil']) {
     store[k].sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  // 「开盘价一经记录不再改动」是为了防止日间抖动反复改写，
+  // 但当日那根 K 线万一在生成时被填错，就成了永远改不掉的错值
+  // （2026-11-25：新浪日线把当日开盘填成昨收 88.35，实时是 88.47）。
+  // 所以只对最新一天、且有更权威来源时，允许校正一次；隔日即冻结。
+  const lb = store.brent[store.brent.length - 1];
+  if (lb) {
+    const prevBar = store.brent[store.brent.length - 2];
+    const looksLikePrevClose =
+      prevBar && Math.abs(lb.open - prevBar.close) < 0.005;   // 疑似“昨收占位”
+    let better = null;
+    let from = '';
+    if (SINA_RT_SNAP && SINA_RT_SNAP.date === lb.date && SINA_RT_SNAP.open) {
+      better = SINA_RT_SNAP.open;
+      from = '新浪实时';
+    } else {
+      const le = store.emBrent[store.emBrent.length - 1];
+      // 没有实时快照时，仅在“疑似占位”的情况下才用东财兜底，避免把两家切点差异搬进来
+      if (looksLikePrevClose && le && le.date === lb.date && le.open > 0) {
+        better = le.open;
+        from = '东财日线';
+      }
+    }
+    if (better && Math.abs(better - lb.open) > 0.004) {
+      console.log(`[sync] 校正当日开盘（${from}）：${lb.open} → ${better}`);
+      lb.open = better;
+    }
   }
 
   const changed = fingerprint(store) !== before;
