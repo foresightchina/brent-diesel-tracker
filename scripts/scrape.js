@@ -38,6 +38,9 @@ const BBL_PER_MT = 7.45;
 const SINA_KLINE =
   'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20t=/GlobalFuturesService.getGlobalFuturesDailyKLine?symbol=OIL';
 
+// 新浪外盘实时快照（有 Referer 防盗链，必须带来源页）
+const SINA_RT = 'https://hq.sinajs.cn/list=hf_OIL';
+
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -92,6 +95,22 @@ function nowInShanghai() {
 /* 抓取                                                                */
 /* ------------------------------------------------------------------ */
 
+/** 新浪外盘实时快照：最新、最高、最低、昨结算、开盘
+ *  字段顺序：0 最新 2 买 3 卖 4 最高 5 最低 6 时间 7 昨结算 8 开盘 12 日期 13 名称 */
+async function fetchSinaRealtime() {
+  const txt = await fetchText(SINA_RT, 'https://finance.sina.com.cn');
+  const m = txt.match(/"([^"]*)"/);
+  if (!m) throw new Error('新浪实时返回格式异常');
+  const f = m[1].split(',');
+  const num = (v) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const date = (f[12] || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('新浪实时日期异常');
+  return { date, open: num(f[8]), high: num(f[4]), low: num(f[5]), last: num(f[0]), prevSettle: num(f[7]) };
+}
+
 /** 新浪日线（JSONP）：date,open,high,low,close,volume */
 async function fetchSinaBrent() {
   let lastErr;
@@ -115,6 +134,26 @@ async function fetchSinaBrent() {
         .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date) && Number.isFinite(x.open) && x.open > 0)
         .sort((a, b) => (a.date < b.date ? -1 : 1));
       if (!out.length) throw new Error('新浪日线解析结果为空');
+
+      // 日线接口对“当日尚未走完的那根 K 线”，开盘价偶尔会填成昨收
+      // （2026-11-25 就是：日线给 88.35，而新浪自家实时接口开盘是 88.47）。
+      // 用实时接口的“开盘”字段校正当日这一根，页面才与新浪行情页一致。
+      try {
+        const rt = await fetchSinaRealtime();
+        const last = out[out.length - 1];
+        if (rt.date === last.date) {
+          if (rt.open && Math.abs(rt.open - last.open) > 0.004) {
+            console.log(`[sync] 当日开盘按实时校正：${last.open} → ${rt.open}`);
+            last.open = rt.open;
+          }
+          if (rt.high) last.high = Math.max(last.high || 0, rt.high);
+          if (rt.low) last.low = last.low ? Math.min(last.low, rt.low) : rt.low;
+          if (rt.last) last.close = rt.last;
+        }
+      } catch (e) {
+        console.log(`[sync] 新浪实时校正跳过：${e.message}`);
+      }
+
       return out;
     } catch (err) {
       lastErr = err;
