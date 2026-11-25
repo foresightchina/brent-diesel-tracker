@@ -25,29 +25,29 @@
 
 另外，代码仓库里也另存了一份纯文本副本（**NOTES.md**），与代码放在一起，不依赖任何账号。两边内容一致，这里排版更好看，那一份活得更久。
 
-### 十节目录（点一下直接跳过去）
+### 全文地图（十节，按编号滑）
 
-下面十条都能点。手机上看不方便滚动时用它最省事，平时只需要记住最后一条。
+不设链接：这个阅读器不认文内锚点，点了不会动。所以这份地图只负责一件事——让你知道哪一节有什么，翻的时候按编号滑。手机上真要快，直接翻第十节那张表。
 
-1. [一、起点：一个有点苛刻的需求](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#3ImLilRIJcOYhFkepZPU37)
+- **一 起点** 一个有点苛刻的需求，怎么把方案逼到只剩一条路
 
-2. [二、最后的形状（整条链路的分工）](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#hZGtThrwgFea0I4n5N3urF)
+- **二 最后的形状** 整条链路谁管哪一段，坏了一环怎么单独换掉
 
-3. [三、踩过的坑（六个现场）](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#o8VWn9vuJMMEYi3nySehOO)
+- **三 踩过的坑** 六个现场：现象、真正的原因、怎么处理
 
-4. [四、三条铁律](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#WGLexJHR2uUrtTRAshIWyJ)
+- **四 三条铁律** 免费、免维护、实时，三样只能挑两样
 
-5. [五、现在要花多少精力](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#xEz7SqPvmhR7IEhFHt07JA)
+- **五 现在要花多少精力** 每天零分钟，只有两件「不要动」的事
 
-6. [六、如果重来一次](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#1Iw4jCvxQ54eJSIXb2q1AI)
+- **六 如果重来一次** 先定约束、先验数据可达、先写下能忍的缺陷
 
-7. [七、别把「我这边能推」当成常态](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#mkCRgsqtruT5E5zMAdFmUN)
+- **七 别把「我这边能推」当成常态** 为什么永远要留一条手工通道
 
-8. [八、一个错值能被锁死一辈子](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#jg8s9PW5DwBpMWhppGlIAL)
+- **八 一个错值能被锁死一辈子** 88.35 那件事的完整解剖
 
-9. [九、手工推送的四行命令](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#jI269Rkqj4y0fJcOlEGhbM)
+- **九 手工推送的四行命令** 推不上去时，整段粘进那个命令窗口
 
-10. [十、速查表（出问题先点这个）](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#KxZP7n5CDWsL2JAeUxqRjK)
+- **十 速查表** 出问题先翻这一页：十一种症状，十一个动作
 
 ## 一、起点：一个有点苛刻的需求
 
