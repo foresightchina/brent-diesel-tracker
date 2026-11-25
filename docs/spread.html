@@ -242,9 +242,9 @@
 
   <footer>
     <div class="sep"></div>
-    <div><b>数据来源</b>　两条线均取自东方财富行情接口，同源同交易日历：布伦特为 ICE 布伦特原油当月连续（美元/桶），柴油为 ICE 低硫柴油当月连续（美元/吨）。归档由 GitHub Actions 每 10 分钟自动同步，含十年历史；页面顶部的实时行情由浏览器直接向同一接口获取，不依赖后台任务是否准时。</div>
+    <div><b>数据来源</b>　布伦特开盘取新浪日线，与首页「布伦特开盘价」台账同源，两页数字永远一致；柴油取东方财富 ICE 低硫柴油当月连续（美元/吨）。之所以布伦特不用东财的同一路数据，是因为 ICE 布伦特近乎 24 小时连续交易，「一个交易日从几点开始」两家切点不同：约七成交易日两边完全相同，遇到隔夜大幅波动会差几美分到几美元，甚至把同一根 K 线切到相邻两天。记账只认一个口径，免得自己跟自己打架。归档由 GitHub Actions 每 10 分钟自动同步，含十年历史；页面顶部的实时行情由浏览器直接向东财接口获取，不依赖后台任务是否准时。</div>
     <div><b>折算与价差</b>　柴油按 1 吨 = 7.45 桶（密度约 0.845 kg/L）折算为美元/桶；价差 = 柴油折桶价 − 当日布伦特开盘价，价差率 = 价差 ÷ 布伦特开盘价。该价差为柴油对原油的直观溢价，可作裂解价差走势的简化观察，非炼厂标准裂解价差（后者还涉及产品得率与加工成本）。</div>
-    <div><b>连续合约</b>　两条线均为当月连续合约，换月时价格会出现跳空，属正常现象，非行情异常。</div>
+    <div><b>连续合约</b>　两条线均为当月连续合约，换月时价格会出现跳空，属正常现象，非行情异常；极少见的个把交易日因两家切点不同，布伦特一栏会与东财页面对不上，以本页与首页为准。</div>
     <div class="sign">
       <span>行情数据归交易所及数据提供方所有，本页仅作记录与研究之用，不构成交易建议</span>
       <span class="by">BRETT 个人授权制作</span>
@@ -467,15 +467,22 @@ function renderTable(){
 /* ---------------- 启动 ---------------- */
 function ingest(data){
   const gMap = new Map((data.gasoil || []).map(r => [r.date, r]));
-  ROWS = (data.emBrent || [])
-    .filter(b => gMap.has(b.date) && b.open > 0)
-    .map(b => {
-      const g = gMap.get(b.date);
-      if (!(g.open > 0)) return null;
+  // 布伦特统一取新浪口径（与首页台账同源），缺这一天才回落东财。
+  // 两家对“交易日从几点开始”的切点不同：约 7 成交易日完全相同，
+  // 遇到隔夜大幅波动会有几美分到几美元的差（个别日子整根 K 线错开）。
+  const bSina = new Map((data.brent || []).map(r => [r.date, r]));
+  const bEm = new Map((data.emBrent || []).map(r => [r.date, r]));
+  const dates = [...new Set([...bSina.keys(), ...bEm.keys()])].sort();
+
+  ROWS = dates
+    .map(date => {
+      const g = gMap.get(date);
+      const b = bSina.get(date) || bEm.get(date);
+      if (!g || !b || !(b.open > 0) || !(g.open > 0)) return null;
       const gBbl = g.open / BBL_PER_MT;
       const spread = gBbl - b.open;
       return {
-        date: b.date,
+        date,
         b: { o: b.open, h: b.high, l: b.low, c: b.close },
         g: { o: g.open, h: g.high, l: g.low, c: g.close },
         gBbl, spread,
