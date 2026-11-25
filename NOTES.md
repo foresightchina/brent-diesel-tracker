@@ -23,31 +23,31 @@
 
 真出状况的时候，记住一句就够：**别从头读**。从头读会把当时的慌乱重新经历一遍，而你需要的是答案。
 
-另外，仓库里另存了一份纯文本副本（**NOTES.md**），与代码放在一起，不依赖任何账号。两边内容一致，资料库这份排版更好看，那一份活得更久。
+另外，代码仓库里也另存了一份纯文本副本（**NOTES.md**），与代码放在一起，不依赖任何账号。两边内容一致，这里排版更好看，那一份活得更久。
 
 ### 十节目录（点一下直接跳过去）
 
-下面十条都是可点的。手机上看不方便滚动时，用它最省事；平时只要记住最后一条。
+下面十条都能点。手机上看不方便滚动时用它最省事，平时只需要记住最后一条。
 
-1. [一、起点：一个有点苛刻的需求](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#SugyNwoUQXN9Zhsj0Q7FQK)
+1. [一、起点：一个有点苛刻的需求](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#3ImLilRIJcOYhFkepZPU37)
 
-2. [二、最后的形状（整条链路的分工）](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#irSvagIjq3ClpicGywVbb0)
+2. [二、最后的形状（整条链路的分工）](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#hZGtThrwgFea0I4n5N3urF)
 
-3. [三、踩过的坑（六个现场）](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#7xEd9r6mYiS6B4czYHuf1F)
+3. [三、踩过的坑（六个现场）](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#o8VWn9vuJMMEYi3nySehOO)
 
-4. [四、三条铁律](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#qLzQwoDYLkOxETzAQiRxRS)
+4. [四、三条铁律](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#WGLexJHR2uUrtTRAshIWyJ)
 
-5. [五、现在要花多少精力](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#fAbpT2cZzb2thgAUFrrAUX)
+5. [五、现在要花多少精力](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#xEz7SqPvmhR7IEhFHt07JA)
 
-6. [六、如果重来一次](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#sh8ILQiO7LPxVSzvXiJ0M3)
+6. [六、如果重来一次](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#1Iw4jCvxQ54eJSIXb2q1AI)
 
-7. [七、别把「我这边能推」当成常态](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#LL6Wooynr00V2WJjMlp0FD)
+7. [七、别把「我这边能推」当成常态](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#mkCRgsqtruT5E5zMAdFmUN)
 
-8. [八、一个错值能被锁死一辈子](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#nfJntNqbnc8j0BI5qJIPXY)
+8. [八、一个错值能被锁死一辈子](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#jg8s9PW5DwBpMWhppGlIAL)
 
-9. [九、手工推送的四行命令](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#fvhy5hdX4TQO5G5jPoFBnf)
+9. [九、手工推送的四行命令](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#jI269Rkqj4y0fJcOlEGhbM)
 
-10. [十、速查表（出问题先点这个）](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#xIgApWO1GnnNjJjnFlFY8r)
+10. [十、速查表（出问题先点这个）](https://www.workbuddy.cn/space/d/64RaPp1aSPVsNpLqGt4JYG#KxZP7n5CDWsL2JAeUxqRjK)
 
 ## 一、起点：一个有点苛刻的需求
 
@@ -176,7 +176,7 @@ git -c http.sslBackend=openssl push origin main
 
 1. 看最后一行：出现 main -> main 且没有 rejected 字样，就是成了。
 
-2. 打开 https://github.com/foresightchina/brent-diesel-tracker/commits/main ，最新一条提交如果就是你刚推的那条，说明进仓库了。
+2. 打开 [https://github.com/foresightchina/brent-diesel-tracker/commits/main](https://github.com/foresightchina/brent-diesel-tracker/commits/main) ，最新一条提交如果就是你刚推的那条，说明进仓库了。
 
 3. 等一两分钟刷新网页。数字没变先怀疑缓存，别怀疑代码：网址后面加个 ?v=1 强制取新，内容变了就证明是缓存。
 
