@@ -25,6 +25,30 @@
 
 另外，仓库里另存了一份纯文本副本（**NOTES.md**），与代码放在一起，不依赖任何账号。两边内容一致，资料库这份排版更好看，那一份活得更久。
 
+### 十节目录（点一下直接跳过去）
+
+下面十条都是可点的。手机上看不方便滚动时，用它最省事；平时只要记住最后一条。
+
+1. [一、起点：一个有点苛刻的需求](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#SugyNwoUQXN9Zhsj0Q7FQK)
+
+2. [二、最后的形状（整条链路的分工）](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#irSvagIjq3ClpicGywVbb0)
+
+3. [三、踩过的坑（六个现场）](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#7xEd9r6mYiS6B4czYHuf1F)
+
+4. [四、三条铁律](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#qLzQwoDYLkOxETzAQiRxRS)
+
+5. [五、现在要花多少精力](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#fAbpT2cZzb2thgAUFrrAUX)
+
+6. [六、如果重来一次](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#sh8ILQiO7LPxVSzvXiJ0M3)
+
+7. [七、别把「我这边能推」当成常态](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#LL6Wooynr00V2WJjMlp0FD)
+
+8. [八、一个错值能被锁死一辈子](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#nfJntNqbnc8j0BI5qJIPXY)
+
+9. [九、手工推送的四行命令](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#fvhy5hdX4TQO5G5jPoFBnf)
+
+10. [十、速查表（出问题先点这个）](https://www.workbuddy.cn/space/d/S18Er5tIiDJly2ge6sIu1q#xIgApWO1GnnNjJjnFlFY8r)
+
 ## 一、起点：一个有点苛刻的需求
 
 想每天看到布伦特原油的开盘价、当天最高最低，还想看新加坡 EN590 柴油与布伦特的价差。
