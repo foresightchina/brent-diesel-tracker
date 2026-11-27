@@ -574,7 +574,10 @@ async function refreshLive(){
     liveFail++;
     if (!LIVE){
       const arch = META.lastSync ? '归档 ' + String(META.lastSync).slice(11) : '归档数据';
-      setStatus('warn', arch + '　·　延时行情');
+      // 归档里已经有今天，说明页面不缺数据，只是没连上实时源——别报红吓人
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+      const current = ALL.length && ALL[0].date === today;
+      setStatus(current ? 'ok' : 'warn', current ? arch + '　·　实时源暂不可用' : arch + '　·　延时行情');
     }
     if (liveFail === 3) startLiveLoop();   // 连着三次取不到就降到低速轮询
   }

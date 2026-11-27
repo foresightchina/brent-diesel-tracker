@@ -304,8 +304,13 @@ function renderTop(meta){
   $('freshTag').style.color = gap > 5 ? '#a5701f' : 'var(--ink-2)';
 
   const arch = meta.lastSync ? '归档 ' + String(meta.lastSync).slice(11) : '归档 —';
+  // 今天这一行归档里已经有了，就不该因为「实时源取不到」而报红——
+  // 页面本来就不缺数据；只在归档落后于当日时才需要提醒。
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+  const current = last.date === todayStr;
   // 日线口径没有报价时间戳，只标交易日；快照口径才带时分秒
   if (LIVE) setStatus('ok', (LIVE.timeStr ? '实时 ' + LIVE.timeStr : '实时 · ' + LIVE.date.slice(5)) + '　·　' + arch);
+  else if (current) setStatus('ok', arch + (liveNote ? '　·　' + liveNote : ''));
   else if (liveNote) setStatus('warn', liveNote + '　·　' + arch);
   else if (meta.lastError) setStatus('err', '同步异常：' + meta.lastError);
   else if (meta.lastSync) setStatus('ok', arch);
