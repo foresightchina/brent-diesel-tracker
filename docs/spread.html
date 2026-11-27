@@ -655,7 +655,10 @@ async function refreshLive(){
 
 function startLiveLoop(){
   clearTimeout(liveTimer);
-  const gap = liveFail >= 3 ? 300000 : 30000;   // 正常 30 秒；连着三次取不到就降到 5 分钟
+  // 正常 60 秒刷一次；连着三次取不到就降到 5 分钟。
+  // 价差用的是「开盘价」，开盘后就不变了，没必要 30 秒敲一次——
+  // 敲太勤反而会被东财当成爬虫掐连接。
+  const gap = liveFail >= 3 ? 300000 : 60000;
   liveTimer = setTimeout(async () => {
     await refreshLive();
     startLiveLoop();

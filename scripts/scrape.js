@@ -63,7 +63,16 @@ function fetchText(url, referer, timeout = 25000) {
     const req = mod.get(
       url,
       {
-        headers: { 'User-Agent': UA, Referer: referer, Accept: '*/*' },
+        // Node 19 起默认 keepAlive=true，会复用空闲连接；东财/CDN 那边会主动关掉闲置 socket，
+        // 复用到被关掉的那条就是 "socket hang up"（2026-11-27 14:21 那次抓取就是这么挂的）。
+        // 这里每次都用新连接，代价是一次握手，换来不再撞这个坑。
+        agent: false,
+        headers: {
+          'User-Agent': UA,
+          Referer: referer,
+          Accept: '*/*',
+          'Cache-Control': 'no-cache',
+        },
         timeout,
       },
       (res) => {
@@ -182,9 +191,11 @@ async function fetchKline(secid, minPrice, maxPrice) {
 
   let lastErr;
   for (const base of ['https://push2his.eastmoney.com', 'http://push2his.eastmoney.com']) {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const j = JSON.parse(await fetchText(base + pathPart, 'https://quote.eastmoney.com/'));
+        // 带时间戳破缓存：CDN 上的旧副本会让当日那根 K 线迟迟不出现
+        const url = base + pathPart + '&_=' + Date.now();
+        const j = JSON.parse(await fetchText(url, 'https://quote.eastmoney.com/'));
         const d = j && j.data;
         if (!d || !Array.isArray(d.klines) || !d.klines.length) throw new Error('日线数据为空');
         const out = [];
@@ -216,7 +227,8 @@ async function fetchKline(secid, minPrice, maxPrice) {
         return out;
       } catch (err) {
         lastErr = err;
-        if (attempt === 0) await sleep(800);
+        console.log(`[kline] ${secid} 第 ${attempt + 1} 次失败：${err.message || err.code || err}`);
+        if (attempt < 2) await sleep(1200 * (attempt + 1));
       }
     }
   }
@@ -292,8 +304,10 @@ function writeJson(file, obj) {
     try {
       return { ok: true, value: await fn() };
     } catch (err) {
-      console.error(`[sync] ${label} 失败：${err.message}`);
-      return { ok: false, error: err.message, label, key };
+      // 个别网络错误没有 message（只有 code），兜一下，免得台账里只剩一个空冒号
+      const msg = (err && (err.message || err.code)) || String(err);
+      console.error(`[sync] ${label} 失败：${msg}`);
+      return { ok: false, error: msg, label, key };
     }
   };
 
