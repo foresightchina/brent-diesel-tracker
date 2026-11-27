@@ -611,13 +611,22 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-/** 读归档并重绘。失败时保留当前画面，绝不清空已经看到的数据。 */
-async function loadArchive(){
-  const res = await fetch('./data.json?_=' + Date.now(), { cache: 'no-store' });
+/** 读归档并重绘。失败时保留当前画面，绝不清空已经看到的数据。
+ *  force=true 时绕过 CDN 缓存（首次打开用）；平时走条件请求，
+ *  归档没变就只返回 304，省流量也省重绘。 */
+async function loadArchive(force){
+  const res = await fetch('./data.json' + (force ? '?_=' + Date.now() : ''),
+    { cache: force ? 'no-store' : 'no-cache' });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const data = await res.json();
+
+  const prevSync = META.lastSync;
+  const prevLen = ALL.length;
   META = data.meta || {};
   ALL = buildRows(data);
+  const changed = force || prevSync !== META.lastSync || prevLen !== ALL.length;
+  if (!changed) return false;
+
   if (LIVE) mergeLive(LIVE);      // 回读后把盘中值重新并进去，别让归档把最新价盖回去
   renderTop({ meta: META });
   drawChart();
@@ -628,15 +637,15 @@ async function loadArchive(){
 function startArchiveLoop(){
   clearInterval(archiveTimer);
   // 归档靠 GitHub 定时任务写，实测一天可能只落一次；页面自己盯着，
-  // 三分钟回读一次，有新的就重绘，没有就什么也不动。
+  // 五分钟回读一次，有新的才重绘，没有就什么都不做。
   archiveTimer = setInterval(() => {
-    loadArchive().catch(() => {});
-  }, 180000);
+    loadArchive(false).catch(() => {});
+  }, 300000);
 }
 
 async function boot(){
   try{
-    await loadArchive();
+    await loadArchive(true);
     await refreshLive();      // 先取一次实时价，页面打开即最新
     startLiveLoop();
     startArchiveLoop();

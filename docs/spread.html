@@ -679,14 +679,22 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-/** 读归档并重绘。失败时保留当前画面，不清空已有数据。 */
-async function loadArchive(){
-  const res = await fetch('./data.json?_=' + Date.now(), { cache: 'no-store' });
+/** 读归档并重绘。失败时保留当前画面，不清空已有数据。
+ *  force=true 绕过 CDN 缓存（首次打开用）；平时条件请求，没变就 304。 */
+async function loadArchive(force){
+  const res = await fetch('./data.json' + (force ? '?_=' + Date.now() : ''),
+    { cache: force ? 'no-store' : 'no-cache' });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const data = await res.json();
+
+  const prevSync = META.lastSync;
+  const prevLen = ROWS.length;
   META = data.meta || {};
   ingest(data);
   if (LIVE && LIVE.b && LIVE.g) mergeLive({ b: LIVE.b, g: LIVE.g, date: LIVE.date });
+  const changed = force || prevSync !== META.lastSync || prevLen !== ROWS.length;
+  if (!changed) return false;
+
   renderTop(META);
   drawAll();
   renderTable();
@@ -695,16 +703,16 @@ async function loadArchive(){
 
 function startArchiveLoop(){
   clearInterval(archiveTimer);
-  // 归档靠 GitHub 定时任务写，实测一天可能只落一次；页面三分钟回读一次，
-  // 有新数据就重绘，免得标签页开着不动就永远停在打开那一刻。
+  // 归档靠 GitHub 定时任务写，实测一天可能只落一次；页面五分钟回读一次，
+  // 有新的才重绘，免得标签页开着不动就永远停在打开那一刻。
   archiveTimer = setInterval(() => {
-    loadArchive().catch(() => {});
-  }, 180000);
+    loadArchive(false).catch(() => {});
+  }, 300000);
 }
 
 async function boot(){
   try{
-    await loadArchive();
+    await loadArchive(true);
     await refreshLive();
     startLiveLoop();
     startArchiveLoop();
