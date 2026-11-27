@@ -473,8 +473,14 @@ function buildRows(data){
 
 /* ---------------- 浏览器直连实时行情 ----------------
    东财行情接口允许跨域，所以页面自己就能取当前价，
-   不必等 GitHub Actions 的定时任务——它属于“尽力而为”，不保证准时。 */
-const LIVE_PATH = '/api/qt/stock/get?secid=112.B00Y&fields=f43,f44,f45,f46,f60,f86&fltt=2&invt=2';
+   不必等 GitHub Actions 的定时任务——它属于“尽力而为”，不保证准时。
+
+   2026-11-27 晚的故障：东财对 stock/get、stock/kline 两条路径直接掐断连接
+   （浏览器里表现为 ERR_CONNECTION_CLOSED，页面一直显示「实时源不可用」），
+   而 api/qt/ulist.np/get 仍然正常，且带 Access-Control-Allow-Origin。
+   它一次请求就能带回 最新价/开/高/低/昨收/时间戳，比原方案还省一次往返，
+   因此改为主用：2 最新 17 开 15 高 16 低 18 昨收 124 报价时间。 */
+const ULIST_PATH = '/api/qt/ulist.np/get?secids=112.B00Y&fields=f2,f12,f15,f16,f17,f18,f124&fltt=2&invt=2';
 // 东财两个入口：主站偶尔被风控掐断，延时站兜底
 const LIVE_HOSTS = ['https://push2.eastmoney.com', 'https://push2delay.eastmoney.com'];
 // 日线兜底：单票接口被掐时，用最新一根日线的收盘当「最新价」
@@ -489,20 +495,21 @@ let liveFail = 0;       // 连续失败次数，用来放缓轮询
 
 const posNum = v => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
 
-/** 单票快照：能给到精确报价时间，优先用它 */
+/** 批量报价：一次拿到最新价、开高低、昨收和报价时间 */
 async function pullQuote(){
   let lastErr = null;
   for (const host of LIVE_HOSTS){
     try{
-      const r = await fetch(host + LIVE_PATH + '&_=' + Date.now(), { cache: 'no-store' });
+      const r = await fetch(host + ULIST_PATH + '&_=' + Date.now(), { cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
-      const d = j && j.data;
-      if (!d) throw new Error('实时接口返回为空');
-      const ts = d.f86 ? new Date(d.f86 * 1000) : new Date();
+      const d = j && j.data && j.data.diff && j.data.diff[0];
+      if (!d) throw new Error('批量报价返回为空');
+      const open = posNum(d.f17), last = posNum(d.f2);
+      if (!open || !last) throw new Error('批量报价缺开/收');
+      const ts = d.f124 ? new Date(d.f124 * 1000) : new Date();
       return {
-        open: posNum(d.f46), high: posNum(d.f44), low: posNum(d.f45),
-        last: posNum(d.f43), prevClose: posNum(d.f60),
+        open, high: posNum(d.f15), low: posNum(d.f16), last, prevClose: posNum(d.f18),
         date: ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
         timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
         fetchedAt: Date.now()

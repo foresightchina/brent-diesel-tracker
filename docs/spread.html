@@ -514,10 +514,16 @@ function ingest(data){
    2026-11-27 的故障：原来两个品种都走「单票快照」接口（stock/get），
    其中 112.G00Y（ICE 柴油当月连续）整日返回空，而 Promise.all 一损俱损，
    连布伦特的实时数据也一起丢，页面只能退回归档的昨天。
-   现在改为主用「日线」接口（stock/kline）——与归档脚本同源同口径，
-   两个品种都取得到，响应头也带 Access-Control-Allow-Origin；
-   单票快照降级为兜底（它偶尔能给出更精确的报价时间）。 */
+   后来改用「日线」接口（stock/kline），但当晚东财又把这整条路径的 TCP 连接
+   直接掐断（浏览器里 ERR_CONNECTION_CLOSED），页面仍显示「实时源不可用」。
+   现在主用 api/qt/ulist.np/get：一次请求带回两个品种的 最新/开/高/低/昨收/时间，
+   且带跨域头；日线与单票快照都降为兜底。 */
 const SECID = { b: '112.B00Y', g: '112.G00Y' };
+
+// 2 最新 17 开 15 高 16 低 18 昨收 124 报价时间
+const ULIST_PATH = '/api/qt/ulist.np/get?secids=112.B00Y,112.G00Y'
+  + '&fields=f2,f12,f14,f15,f16,f17,f18,f124&fltt=2&invt=2';
+const ULIST_HOSTS = ['https://push2.eastmoney.com', 'https://push2delay.eastmoney.com'];
 
 const KLINE_PATH = '/api/qt/stock/kline/get?fields1=f1,f2,f3,f4,f5,f6'
   + '&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=0&end=20500101&lmt=2&secid=';
@@ -535,6 +541,38 @@ let liveFail = 0;      // 连续失败次数，用来放缓轮询，别把源敲
 let liveNote = '';     // 只有单边取到时的说明文字
 
 const posNum = v => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
+
+/** 批量报价（主用）：一次请求拿两个品种，同日同口径，还带报价时间 */
+async function pullUlist(){
+  let lastErr = null;
+  for (const host of ULIST_HOSTS){
+    try{
+      const r = await fetch(host + ULIST_PATH + '&_=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      const diff = j && j.data && j.data.diff;
+      if (!Array.isArray(diff) || diff.length < 2) throw new Error('批量报价返回为空');
+
+      const mapOne = x => {
+        if (!x) return null;
+        const open = posNum(x.f17), close = posNum(x.f2);
+        if (!open || !close) return null;
+        const ts = x.f124 ? new Date(x.f124 * 1000) : new Date();
+        return {
+          open, high: posNum(x.f15), low: posNum(x.f16), close, prevClose: posNum(x.f18),
+          date: ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
+          timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
+          src: '批量'
+        };
+      };
+      const b = mapOne(diff.find(x => x.f12 === 'B00Y'));
+      const g = mapOne(diff.find(x => x.f12 === 'G00Y'));
+      if (!b || !g) throw new Error('批量报价缺品种');
+      return { b, g };
+    }catch(err){ lastErr = err; }
+  }
+  throw lastErr || new Error('批量报价不可用');
+}
 
 /** 日线：只要最新两根。今天尚未走完的那根也在里面，正好当「今日占位」 */
 async function pullKline(secid){
@@ -596,15 +634,20 @@ async function pullSeries(secid){
   throw lastErr || new Error('行情源不可用');
 }
 
-/** 两个品种各取各的：allSettled 保证一个不通不连累另一个 */
-function pullLive(){
-  return Promise.allSettled([pullSeries(SECID.b), pullSeries(SECID.g)])
-    .then(([rb, rg]) => ({
-      b: rb.status === 'fulfilled' ? rb.value : null,
-      g: rg.status === 'fulfilled' ? rg.value : null,
-      errB: rb.status === 'rejected' ? rb.reason.message : '',
-      errG: rg.status === 'rejected' ? rg.reason.message : ''
-    }));
+/** 先走批量（一次两个品种），不通再逐品种走日线/快照兜底 */
+async function pullLive(){
+  try{
+    const q = await pullUlist();
+    if (q.b && q.g) return { b: q.b, g: q.g, errB: '', errG: '' };
+  }catch(e){ /* 落到下面逐品种的兜底 */ }
+
+  const [rb, rg] = await Promise.allSettled([pullSeries(SECID.b), pullSeries(SECID.g)]);
+  return {
+    b: rb.status === 'fulfilled' ? rb.value : null,
+    g: rg.status === 'fulfilled' ? rg.value : null,
+    errB: rb.status === 'rejected' ? rb.reason.message : '',
+    errG: rg.status === 'rejected' ? rg.reason.message : ''
+  };
 }
 
 /** 归档落后时补当日行；同一天已有实时行则刷新。返回 'added' / 'updated' / false */
