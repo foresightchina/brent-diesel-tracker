@@ -49,6 +49,9 @@ jobs:
         run: node scripts/scrape.js
 
       - name: 提交数据变更
+        # 即使上一步以失败退出（落后报警），也要把已经取到的数据提交上去，
+        # 否则数据卡在 runner 里白跑一趟；任务最终仍标记为失败，好触发通知。
+        if: always()
         run: |
           git config user.name "market-data-bot"
           git config user.email "market-data-bot@users.noreply.github.com"

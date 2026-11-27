@@ -391,8 +391,30 @@ function writeJson(file, obj) {
   // 否则页面打开是空的
   const needInit = !fs.existsSync(PUBLIC_FILE);
 
+  /* 长期无人看管的看门狗 ------------------------------------------------
+     最新交易日落后超过 5 个自然日（够覆盖周末和短假），说明抓取链路断了。
+     这时仍然把已取到的数据写盘——不能因为报警就把数据一起丢掉——
+     但让任务以失败退出。GitHub 会给仓库所有者发一封失败通知邮件，
+     这是整条链路唯一的告警通道，也是"没人看着也能知道坏了"的唯一办法。 */
+  const STALE_DAYS = 5;
+  const checkStale = (stage) => {
+    const lb = store.brent[store.brent.length - 1];
+    if (!lb) {
+      console.error(`::error::台账为空（${stage}），历史数据可能已丢失`);
+      process.exitCode = 1;
+      return;
+    }
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+    const lag = Math.round((new Date(todayStr) - new Date(lb.date)) / 86400000);
+    if (lag > STALE_DAYS) {
+      console.error(`::error::最新交易日 ${lb.date} 落后 ${lag} 天（阈值 ${STALE_DAYS} 天），抓取链路可能已断（${stage}）`);
+      process.exitCode = 1;
+    }
+  };
+
   if (!changed && !needInit) {
     console.log('[store] 数据无变化，不写入、不提交');
+    checkStale('无变化');
     return;
   }
 
@@ -406,6 +428,7 @@ function writeJson(file, obj) {
 
   const newest = store.brent[store.brent.length - 1];
   console.log(`[store] 已写入，最新交易日 ${newest ? newest.date : '—'}，同步于 ${stamp}`);
+  checkStale('已写入');
 })().catch((err) => {
   console.error('::error::脚本异常：' + (err && err.stack ? err.stack : err));
   process.exit(1);
