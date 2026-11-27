@@ -448,8 +448,17 @@ function renderTable(){
 
 /* ---------------- 启动 ---------------- */
 /** 后端按日期升序返回；转为页面使用的降序结构，并补齐前收、收盘等字段 */
-function ingestBrent(list){
-  const asc = list.slice().sort((a, b) => a.date < b.date ? -1 : 1);
+/** 归档 → 表格行（倒序）。新浪为主源，东财只补新浪缺的交易日 */
+function buildRows(data){
+  const byDate = new Map();
+  const add = (arr) => {
+    (arr || []).filter(r => r && r.date).forEach(r => {
+      if (!byDate.has(r.date)) byDate.set(r.date, r);   // 先来的优先
+    });
+  };
+  add(data.brent);
+  add(data.emBrent);      // 新浪日线偶尔落后一天，东财已更新时页面不至于缺当日
+  const asc = [...byDate.values()].sort((a, b) => a.date < b.date ? -1 : 1);
   return asc.map((r, i) => ({
     date: r.date,
     open: r.open,
@@ -475,6 +484,7 @@ const KLINE_URL = 'https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1
 let LIVE = null;        // 最近一次拿到的实时行情
 let META = {};          // data.json 里的归档标记
 let liveTimer = null;   // 页面开着时的轮询定时器
+let archiveTimer = null;// 归档重读定时器
 let liveFail = 0;       // 连续失败次数，用来放缓轮询
 
 const posNum = v => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
@@ -594,19 +604,42 @@ function startLiveLoop(){
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden){ clearTimeout(liveTimer); }
-  else { refreshLive(); startLiveLoop(); }
+  else {
+    // 切回页面时先补归档、再补实时。只补实时的话，后台归档更新了页面也不知道——
+    // 2026-11-27 就是标签页开着不动，一整天都停在打开那一刻的数据上。
+    loadArchive().catch(() => {}).then(() => { refreshLive(); startLiveLoop(); });
+  }
 });
+
+/** 读归档并重绘。失败时保留当前画面，绝不清空已经看到的数据。 */
+async function loadArchive(){
+  const res = await fetch('./data.json?_=' + Date.now(), { cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  META = data.meta || {};
+  ALL = buildRows(data);
+  if (LIVE) mergeLive(LIVE);      // 回读后把盘中值重新并进去，别让归档把最新价盖回去
+  renderTop({ meta: META });
+  drawChart();
+  renderTable();
+  return true;
+}
+
+function startArchiveLoop(){
+  clearInterval(archiveTimer);
+  // 归档靠 GitHub 定时任务写，实测一天可能只落一次；页面自己盯着，
+  // 三分钟回读一次，有新的就重绘，没有就什么也不动。
+  archiveTimer = setInterval(() => {
+    loadArchive().catch(() => {});
+  }, 180000);
+}
 
 async function boot(){
   try{
-    const res = await fetch('./data.json', { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    META = data.meta || {};
-    ALL = ingestBrent(data.brent || []);
-    renderTop(data); drawChart(); renderTable();
+    await loadArchive();
     await refreshLive();      // 先取一次实时价，页面打开即最新
     startLiveLoop();
+    startArchiveLoop();
   } catch(err){
     setStatus('err', '数据加载失败');
     $('tbody').innerHTML = '<tr><td colspan="8" class="empty">数据加载失败，请稍后刷新页面。</td></tr>';

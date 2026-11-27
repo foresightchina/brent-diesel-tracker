@@ -530,6 +530,7 @@ const QUOTE_HOSTS = ['https://push2.eastmoney.com', 'https://push2delay.eastmone
 let LIVE = null;       // 最近一次两个品种都取到、且同一交易日的快照
 let META = {};
 let liveTimer = null;
+let archiveTimer = null;
 let liveFail = 0;      // 连续失败次数，用来放缓轮询，别把源敲烦
 let liveNote = '';     // 只有单边取到时的说明文字
 
@@ -672,18 +673,41 @@ function startLiveLoop(){
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden){ clearTimeout(liveTimer); }
-  else { refreshLive(); startLiveLoop(); }
+  else {
+    // 切回页面时先补归档、再补实时：归档在后台更新了，只补实时是发现不了的
+    loadArchive().catch(() => {}).then(() => { refreshLive(); startLiveLoop(); });
+  }
 });
+
+/** 读归档并重绘。失败时保留当前画面，不清空已有数据。 */
+async function loadArchive(){
+  const res = await fetch('./data.json?_=' + Date.now(), { cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  META = data.meta || {};
+  ingest(data);
+  if (LIVE && LIVE.b && LIVE.g) mergeLive({ b: LIVE.b, g: LIVE.g, date: LIVE.date });
+  renderTop(META);
+  drawAll();
+  renderTable();
+  return true;
+}
+
+function startArchiveLoop(){
+  clearInterval(archiveTimer);
+  // 归档靠 GitHub 定时任务写，实测一天可能只落一次；页面三分钟回读一次，
+  // 有新数据就重绘，免得标签页开着不动就永远停在打开那一刻。
+  archiveTimer = setInterval(() => {
+    loadArchive().catch(() => {});
+  }, 180000);
+}
 
 async function boot(){
   try{
-    const res = await fetch('./data.json', { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    META = data.meta || {};
-    ingest(data);
+    await loadArchive();
     await refreshLive();
     startLiveLoop();
+    startArchiveLoop();
   } catch(err){
     setStatus('err', '数据加载失败');
     $('tbody').innerHTML = '<tr><td colspan="6" class="empty">数据加载失败，请稍后刷新</td></tr>';
