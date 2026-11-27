@@ -102,6 +102,9 @@
   tbody tr:hover td{background:#fafbfc}
   .d-date{font-weight:600;color:var(--ink)}
   .d-week{color:var(--ink-3);font-size:11.5px;margin-left:7px}
+  /* 归档还没写进今天时，用实时日线补的那一行，标出来免得被当成归档数据 */
+  .d-live{color:#a5701f;background:rgba(209,139,44,.12);font-size:10.5px;
+    padding:1px 5px;border-radius:3px;margin-left:7px;vertical-align:1px}
   .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--ink-3)}
   .more{padding:14px;text-align:center;border-top:1px solid var(--line-soft)}
   .more button{font:inherit;font-size:12.5px;color:var(--brand);background:#f7f9fb;border:1px solid var(--line);
@@ -301,7 +304,9 @@ function renderTop(meta){
   $('freshTag').style.color = gap > 5 ? '#a5701f' : 'var(--ink-2)';
 
   const arch = meta.lastSync ? '归档 ' + String(meta.lastSync).slice(11) : '归档 —';
-  if (LIVE) setStatus('ok', '实时 ' + LIVE.g.timeStr + '　·　' + arch);
+  // 日线口径没有报价时间戳，只标交易日；快照口径才带时分秒
+  if (LIVE) setStatus('ok', (LIVE.timeStr ? '实时 ' + LIVE.timeStr : '实时 · ' + LIVE.date.slice(5)) + '　·　' + arch);
+  else if (liveNote) setStatus('warn', liveNote + '　·　' + arch);
   else if (meta.lastError) setStatus('err', '同步异常：' + meta.lastError);
   else if (meta.lastSync) setStatus('ok', arch);
 }
@@ -450,7 +455,7 @@ function renderTable(){
   tb.innerHTML = rows.map((r) => {
     const cls = r.spread >= 0 ? 'up' : 'down';
     return `<tr>
-      <td><span class="d-date">${r.date}</span><span class="d-week">${weekday(r.date)}</span></td>
+      <td><span class="d-date">${r.date}</span><span class="d-week">${weekday(r.date)}</span>${r.live ? '<span class="d-live">实时</span>' : ''}</td>
       <td class="num">${fmt(r.b.o)}</td>
       <td class="num" style="color:var(--ink-2)">${Number(r.g.o).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       <td class="num">${fmt(r.gBbl)}</td>
@@ -498,84 +503,154 @@ function ingest(data){
 }
 
 /* ---------------- 浏览器直连实时行情 ----------------
-   价差用开盘价计算，当日开盘后即固定；这里的作用是：
-   万一归档落后于当日，页面能自己用实时开盘价补上今天这一行。 */
-const LIVE_PATH = '/api/qt/stock/get?fields=f43,f44,f45,f46,f60,f86&fltt=2&invt=2&secid=';
-// 东财两个入口：主站偶尔会被风控掐断，延时站作为备用出口，多一个总比没有强
-const LIVE_HOSTS = ['https://push2.eastmoney.com', 'https://push2delay.eastmoney.com'];
+   价差只用「开盘价」，当日开盘后基本固定；这里的作用是：
+   归档如果落后于当日，页面自己补上今天这一行。
 
-let LIVE = null;
+   2026-11-27 的故障：原来两个品种都走「单票快照」接口（stock/get），
+   其中 112.G00Y（ICE 柴油当月连续）整日返回空，而 Promise.all 一损俱损，
+   连布伦特的实时数据也一起丢，页面只能退回归档的昨天。
+   现在改为主用「日线」接口（stock/kline）——与归档脚本同源同口径，
+   两个品种都取得到，响应头也带 Access-Control-Allow-Origin；
+   单票快照降级为兜底（它偶尔能给出更精确的报价时间）。 */
+const SECID = { b: '112.B00Y', g: '112.G00Y' };
+
+const KLINE_PATH = '/api/qt/stock/kline/get?fields1=f1,f2,f3,f4,f5,f6'
+  + '&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=0&end=20500101&lmt=2&secid=';
+const KLINE_HOSTS = ['https://push2his.eastmoney.com'];
+
+const QUOTE_PATH = '/api/qt/stock/get?fields=f43,f44,f45,f46,f60,f86&fltt=2&invt=2&secid=';
+// 东财两个入口：主站偶尔会被风控掐断，延时站作为备用出口
+const QUOTE_HOSTS = ['https://push2.eastmoney.com', 'https://push2delay.eastmoney.com'];
+
+let LIVE = null;       // 最近一次两个品种都取到、且同一交易日的快照
 let META = {};
 let liveTimer = null;
 let liveFail = 0;      // 连续失败次数，用来放缓轮询，别把源敲烦
+let liveNote = '';     // 只有单边取到时的说明文字
 
-async function pullOne(secid){
+const posNum = v => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
+
+/** 日线：只要最新两根。今天尚未走完的那根也在里面，正好当「今日占位」 */
+async function pullKline(secid){
   let lastErr = null;
-  for (const host of LIVE_HOSTS){
+  for (const host of KLINE_HOSTS){
     try{
-      const r = await fetch(host + LIVE_PATH + secid + '&_=' + Date.now(), { cache: 'no-store' });
+      const r = await fetch(host + KLINE_PATH + secid + '&_=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      const ks = j && j.data && j.data.klines;
+      if (!Array.isArray(ks) || !ks.length) throw new Error('日线返回为空');
+      const f = String(ks[ks.length - 1]).split(',');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(f[0])) throw new Error('日线日期异常');
+      // 字段顺序：日期,开,收,高,低,量,额
+      return {
+        date: f[0], open: posNum(f[1]), close: posNum(f[2]),
+        high: posNum(f[3]), low: posNum(f[4]), timeStr: null, src: '日线'
+      };
+    }catch(err){ lastErr = err; }
+  }
+  throw lastErr || new Error('日线源不可用');
+}
+
+/** 单票快照（兜底）：46 开 44 高 45 低 43 最新 60 昨收 86 时间戳 */
+async function pullQuote(secid){
+  let lastErr = null;
+  for (const host of QUOTE_HOSTS){
+    try{
+      const r = await fetch(host + QUOTE_PATH + secid + '&_=' + Date.now(), { cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
       const d = j && j.data;
-      if (!d) throw new Error('实时接口返回为空');
-      const num = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : null);
+      if (!d) throw new Error('快照返回为空');
       const ts = d.f86 ? new Date(d.f86 * 1000) : new Date();
       return {
-        open: num(d.f46), high: num(d.f44), low: num(d.f45),
-        close: num(d.f43), prevClose: num(d.f60),
+        open: posNum(d.f46), high: posNum(d.f44), low: posNum(d.f45), close: posNum(d.f43),
         date: ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
-        timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
+        timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
+        src: '快照'
       };
-    }catch(err){
-      lastErr = err;
-    }
+    }catch(err){ lastErr = err; }
   }
-  throw lastErr || new Error('实时源不可用');
+  throw lastErr || new Error('快照源不可用');
 }
 
+/** 单个品种：日线优先，失败再退快照；两个都不通才抛错。
+ *  东财的连接时不时会被掐断（实测三轮里有一轮 "Failed to fetch"），
+ *  所以整套按 0.8s / 1.6s 退避重来两次，别让一次握手失败就判死。 */
+async function pullSeries(secid){
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++){
+    try{ return await pullKline(secid); }
+    catch(e1){
+      try{ return await pullQuote(secid); }
+      catch(e2){ lastErr = new Error(e1.message + ' / ' + e2.message); }
+    }
+    if (attempt < 2) await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+  }
+  throw lastErr || new Error('行情源不可用');
+}
+
+/** 两个品种各取各的：allSettled 保证一个不通不连累另一个 */
 function pullLive(){
-  return Promise.all([pullOne('112.B00Y'), pullOne('112.G00Y')])
-    .then(([b, g]) => ({ b, g, date: b.date }));
+  return Promise.allSettled([pullSeries(SECID.b), pullSeries(SECID.g)])
+    .then(([rb, rg]) => ({
+      b: rb.status === 'fulfilled' ? rb.value : null,
+      g: rg.status === 'fulfilled' ? rg.value : null,
+      errB: rb.status === 'rejected' ? rb.reason.message : '',
+      errG: rg.status === 'rejected' ? rg.reason.message : ''
+    }));
 }
 
-/** 归档落后时用实时开盘价补当日行；返回是否新增 */
+/** 归档落后时补当日行；同一天已有实时行则刷新。返回 'added' / 'updated' / false */
 function mergeLive(q){
-  if (!ROWS.length || !q.b.open || !q.g.open) return false;
+  if (!q.b || !q.g || !q.b.open || !q.g.open) return false;
   if (q.b.date !== q.g.date) return false;          // 两个品种交易日不一致，宁可不补
-  const lastDate = ROWS[ROWS.length - 1].date;
-  if (lastDate >= q.date) return false;             // 归档已是最新，不动
 
   const gBbl = q.g.open / BBL_PER_MT;
   const spread = gBbl - q.b.open;
-  ROWS.push({
-    date: q.date,
+  const row = {
+    date: q.b.date,
     b: { o: q.b.open, h: q.b.high, l: q.b.low, c: q.b.close },
     g: { o: q.g.open, h: q.g.high, l: q.g.low, c: q.g.close },
     gBbl, spread,
     rate: q.b.open ? spread / q.b.open * 100 : null,
     live: true
-  });
-  return true;
+  };
+
+  const last = ROWS[ROWS.length - 1];
+  if (last && last.date === row.date){
+    if (!last.live) return false;                   // 归档已写进这一天，以归档为准
+    const changed = last.b.o !== row.b.o || last.g.o !== row.g.o;
+    ROWS[ROWS.length - 1] = row;
+    return changed ? 'updated' : false;
+  }
+  if (last && last.date > row.date) return false;   // 实时比归档还旧，不动
+  ROWS.push(row);
+  return 'added';
 }
 
 async function refreshLive(){
-  try{
-    const q = await pullLive();
-    const added = mergeLive(q);
-    LIVE = q;
-    liveFail = 0;
-    if (added){ renderTop(META); drawAll(); renderTable(); }
-    else renderTop(META);
-  } catch(err){
+  const q = await pullLive();
+  const sameDay = q.b && q.g && q.b.date === q.g.date;
+
+  if (!sameDay){
     liveFail++;
-    if (!LIVE){
-      // 取不到实时价不是故障：东财本身就是延时行情，归档那条线一样在用。
-      // 所以只把时间标出来，不摆出一副坏掉的脸色。
-      const arch = META.lastSync ? '归档 ' + String(META.lastSync).slice(11) : '归档数据';
-      setStatus('warn', arch + '　·　延时行情');
-    }
+    liveNote = !q.b ? '布伦特实时源不可用'
+      : !q.g ? '柴油实时源不可用'
+      : '两品种交易日不一致（' + q.b.date + ' / ' + q.g.date + '）';
+    // 之前取到过就沿用上一次的数：一次握手失败不代表行情没了，
+    // 把状态降成红字反而误导。只有整场都没取到过，才老实标出来。
+    if (!LIVE) renderTop(META);
     if (liveFail === 3) startLiveLoop();   // 连续失败就换成低速轮询
+    return;
   }
+
+  const moved = mergeLive(q);
+  LIVE = { b: q.b, g: q.g, date: q.b.date, timeStr: q.g.timeStr || q.b.timeStr };
+  liveNote = '';
+  liveFail = 0;
+  renderTop(META);
+  if (moved){ drawAll(); renderTable(); }
 }
 
 function startLiveLoop(){
