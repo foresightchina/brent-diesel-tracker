@@ -301,10 +301,12 @@ function renderTop(data){
     $('quoteTag').textContent = LIVE ? '实时行情' : '归档日线';
   }
   // 这一行显示行情本身的时间，而不是后台任务的时间
-  $('syncVal').textContent = LIVE ? LIVE.timeStr : (meta.lastSync || '—');
+  // 这一行显示行情本身的时间，而不是后台任务的时间；日线兜底时没有时分秒，只给交易日
+  const liveLabel = LIVE ? (LIVE.timeStr || LIVE.date.slice(5)) : '';
+  $('syncVal').textContent = LIVE ? liveLabel : (meta.lastSync || '—');
 
   const arch = meta.lastSync ? '归档 ' + String(meta.lastSync).slice(11) : '归档 —';
-  if (LIVE) setStatus('ok', '实时 ' + LIVE.timeStr + '　·　' + arch);
+  if (LIVE) setStatus('ok', '实时 ' + liveLabel + '　·　' + arch);
   else if (meta.lastError) setStatus('err', '同步异常：' + meta.lastError);
   else if (meta.lastSync) setStatus('ok', arch);
 }
@@ -466,13 +468,19 @@ function ingestBrent(list){
 const LIVE_PATH = '/api/qt/stock/get?secid=112.B00Y&fields=f43,f44,f45,f46,f60,f86&fltt=2&invt=2';
 // 东财两个入口：主站偶尔被风控掐断，延时站兜底
 const LIVE_HOSTS = ['https://push2.eastmoney.com', 'https://push2delay.eastmoney.com'];
+// 日线兜底：单票接口被掐时，用最新一根日线的收盘当「最新价」
+const KLINE_URL = 'https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=112.B00Y'
+  + '&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=0&end=20500101&lmt=2';
 
 let LIVE = null;        // 最近一次拿到的实时行情
 let META = {};          // data.json 里的归档标记
 let liveTimer = null;   // 页面开着时的轮询定时器
 let liveFail = 0;       // 连续失败次数，用来放缓轮询
 
-async function pullLive(){
+const posNum = v => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
+
+/** 单票快照：能给到精确报价时间，优先用它 */
+async function pullQuote(){
   let lastErr = null;
   for (const host of LIVE_HOSTS){
     try{
@@ -481,11 +489,10 @@ async function pullLive(){
       const j = await r.json();
       const d = j && j.data;
       if (!d) throw new Error('实时接口返回为空');
-      const num = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : null);
       const ts = d.f86 ? new Date(d.f86 * 1000) : new Date();
       return {
-        open: num(d.f46), high: num(d.f44), low: num(d.f45),
-        last: num(d.f43), prevClose: num(d.f60),
+        open: posNum(d.f46), high: posNum(d.f44), low: posNum(d.f45),
+        last: posNum(d.f43), prevClose: posNum(d.f60),
         date: ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
         timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
         fetchedAt: Date.now()
@@ -493,6 +500,37 @@ async function pullLive(){
     }catch(err){
       lastErr = err;
     }
+  }
+  throw lastErr || new Error('实时源不可用');
+}
+
+/** 日线兜底：没有报价时间，只到交易日 */
+async function pullKline(){
+  const r = await fetch(KLINE_URL + '&_=' + Date.now(), { cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  const ks = j && j.data && j.data.klines;
+  if (!Array.isArray(ks) || !ks.length) throw new Error('日线返回为空');
+  const cur = String(ks[ks.length - 1]).split(',');
+  const prev = ks.length > 1 ? String(ks[ks.length - 2]).split(',') : null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cur[0])) throw new Error('日线日期异常');
+  return {
+    open: posNum(cur[1]), high: posNum(cur[3]), low: posNum(cur[4]), last: posNum(cur[2]),
+    prevClose: prev ? posNum(prev[2]) : null,
+    date: cur[0], timeStr: null, fetchedAt: Date.now()
+  };
+}
+
+/** 快照优先、日线兜底，整套退避重试三次：东财的连接会间歇性被掐断 */
+async function pullLive(){
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++){
+    try{ return await pullQuote(); }
+    catch(e1){
+      try{ return await pullKline(); }
+      catch(e2){ lastErr = new Error(e1.message + ' / ' + e2.message); }
+    }
+    if (attempt < 2) await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
   }
   throw lastErr || new Error('实时源不可用');
 }
