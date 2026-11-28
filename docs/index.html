@@ -495,6 +495,23 @@ let liveFail = 0;       // 连续失败次数，用来放缓轮询
 
 const posNum = v => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
 
+/** 报价时间戳 → 交易日。
+ *  布伦特在 ICE：北京时间 09:00 开盘，次日 07:00 才收，凌晨成交还属于前一个交易日。
+ *  直接拿报价的日历日当日期，一过零点就会凭空多出一天（周六早上冒出「周六行情」）。 */
+function tradeDate(tsMs){
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date(tsMs));
+  const g = t => Number(parts.find(p => p.type === t).value);
+  const d = new Date(Date.UTC(g('year'), g('month') - 1, g('day')));
+  if (g('hour') < 8) d.setUTCDate(d.getUTCDate() - 1);   // 夜盘归前一日
+  const wd = d.getUTCDay();
+  if (wd === 6) d.setUTCDate(d.getUTCDate() - 1);        // 周六 → 周五
+  if (wd === 0) d.setUTCDate(d.getUTCDate() - 2);        // 周日 → 周五
+  return d.toISOString().slice(0, 10);
+}
+
 /** 批量报价：一次拿到最新价、开高低、昨收和报价时间 */
 async function pullQuote(){
   let lastErr = null;
@@ -510,7 +527,7 @@ async function pullQuote(){
       const ts = d.f124 ? new Date(d.f124 * 1000) : new Date();
       return {
         open, high: posNum(d.f15), low: posNum(d.f16), last, prevClose: posNum(d.f18),
-        date: ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
+        date: d.f124 ? tradeDate(d.f124 * 1000) : ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
         timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
         fetchedAt: Date.now()
       };

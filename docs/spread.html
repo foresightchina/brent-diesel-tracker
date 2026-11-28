@@ -542,6 +542,25 @@ let liveNote = '';     // 只有单边取到时的说明文字
 
 const posNum = v => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
 
+/** 报价时间戳 → 交易日。
+ *  布伦特和重柴油都在 ICE：北京时间 09:00 开盘，次日 07:00 才收，
+ *  凌晨的成交其实还属于前一个交易日。直接拿报价的日历日当日期，
+ *  一过零点就会凭空多出一天——周六早上会冒出一行「周六行情」，
+ *  数值照抄周五。所以 08:00 前的成交归前一日，再跳过周末。 */
+function tradeDate(tsMs){
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date(tsMs));
+  const g = t => Number(parts.find(p => p.type === t).value);
+  const d = new Date(Date.UTC(g('year'), g('month') - 1, g('day')));
+  if (g('hour') < 8) d.setUTCDate(d.getUTCDate() - 1);   // 夜盘归前一日
+  const wd = d.getUTCDay();
+  if (wd === 6) d.setUTCDate(d.getUTCDate() - 1);        // 周六 → 周五
+  if (wd === 0) d.setUTCDate(d.getUTCDate() - 2);        // 周日 → 周五
+  return d.toISOString().slice(0, 10);
+}
+
 /** 批量报价（主用）：一次请求拿两个品种，同日同口径，还带报价时间 */
 async function pullUlist(){
   let lastErr = null;
@@ -560,7 +579,7 @@ async function pullUlist(){
         const ts = x.f124 ? new Date(x.f124 * 1000) : new Date();
         return {
           open, high: posNum(x.f15), low: posNum(x.f16), close, prevClose: posNum(x.f18),
-          date: ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
+          date: x.f124 ? tradeDate(x.f124 * 1000) : ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
           timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
           src: '批量'
         };
@@ -609,7 +628,7 @@ async function pullQuote(secid){
       const ts = d.f86 ? new Date(d.f86 * 1000) : new Date();
       return {
         open: posNum(d.f46), high: posNum(d.f44), low: posNum(d.f45), close: posNum(d.f43),
-        date: ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
+        date: d.f86 ? tradeDate(d.f86 * 1000) : ts.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' }),
         timeStr: ts.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
         src: '快照'
       };
