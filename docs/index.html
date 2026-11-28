@@ -65,6 +65,25 @@
   .row .v{font-weight:600;flex:0 0 auto;text-align:right;white-space:nowrap}
   .tag{font-size:11px;padding:1px 7px;border-radius:5px;background:#f2f4f7;color:var(--ink-2);font-weight:500}
 
+  /* 两个口径并列：主数值（新浪）下方挂东财同期值与差值 */
+  .dual{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px;padding-top:11px;
+    border-top:1px dashed var(--line-soft);font-size:12.5px;color:var(--ink-2)}
+  .dual .dk{color:var(--ink-3);font-size:11.5px;letter-spacing:.03em}
+  .dual .dv{font-weight:650;color:var(--ink);font-size:14px}
+  .dual .dd{font-size:11.5px;padding:1px 7px;border-radius:5px;background:#f2f4f7;color:var(--ink-2);font-weight:600}
+  .dual .dd.wide{background:rgba(201,58,53,.08);color:var(--up)}
+
+  .cmp-card{padding:20px 24px 18px;margin-bottom:16px}
+  .cmp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:13px;margin-top:13px}
+  .cmp-cell{background:#fafbfc;border:1px solid var(--line-soft);border-radius:9px;padding:13px 15px;min-width:0}
+  .cmp-cell .k{font-size:11.5px;color:var(--ink-3);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cmp-cell .v{font-size:22px;font-weight:660;letter-spacing:-.01em}
+  .cmp-cell .s{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+  .cmp-note{font-size:12px;color:var(--ink-2);line-height:1.8;margin-top:13px;padding-top:12px;border-top:1px solid var(--line-soft)}
+  .cmp-note b{color:var(--ink);font-weight:650}
+  .d-alt{display:block;font-size:10.5px;color:var(--ink-3);font-weight:500;margin-top:2px;letter-spacing:0}
+  .roll{font-size:10.5px;color:#b0742c;background:rgba(176,116,44,.1);padding:1px 5px;border-radius:4px;margin-left:6px;font-weight:600}
+
   .chart-card{padding:22px 24px 12px;margin-bottom:16px}
   .chart-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:6px;flex-wrap:wrap}
   .chart-title{font-size:14px;font-weight:650}
@@ -126,6 +145,9 @@
     thead th:first-child,tbody td:first-child{padding-left:14px}
     thead th:last-child,tbody td:last-child{padding-right:14px}
     .hero-foot{gap:18px;flex-wrap:wrap}
+    .cmp-card{padding:18px 16px 16px}
+    .cmp-grid{grid-template-columns:1fr}
+    .cmp-cell .v{font-size:20px}
     .d-week{display:none}
     /* 手机端只保留：交易日 / 开盘 / 最高 / 最低 / 跳空 */
     thead th:nth-child(5),tbody td:nth-child(5),
@@ -160,12 +182,17 @@
 
   <div class="grid">
     <section class="card hero">
-      <div class="label">当日开盘价</div>
+      <div class="label">当日开盘价 · 新浪连续合约</div>
       <div class="hero-price">
         <span class="v num" id="openVal">—</span>
         <span class="u">USD / 桶</span>
       </div>
       <div class="chg flat" id="gapVal">以待同步</div>
+      <div class="dual" id="dualBar" style="display:none">
+        <span class="dk">同口径对照 · 东财当月连续</span>
+        <span class="dv num" id="altOpen">—</span>
+        <span class="dd" id="altDiff">—</span>
+      </div>
       <div class="hero-foot">
         <div class="kv"><div class="k">交易日</div><div class="v" id="tradeDate">—</div></div>
         <div class="kv"><div class="k">最高 / 最低</div><div class="v num" id="dayHL">—</div></div>
@@ -187,6 +214,33 @@
       </div>
     </section>
   </div>
+
+  <section class="card cmp-card">
+    <div class="chart-head">
+      <div>
+        <div class="chart-title">两个口径对照</div>
+        <div class="chart-meta" id="cmpMeta">—</div>
+      </div>
+    </div>
+    <div class="cmp-grid">
+      <div class="cmp-cell">
+        <div class="k">新浪 · 布伦特原油（连续）</div>
+        <div class="v num" id="cmpSina">—</div>
+        <div class="s" id="cmpSinaSub">—</div>
+      </div>
+      <div class="cmp-cell">
+        <div class="k">东财 · 布伦特当月连续</div>
+        <div class="v num" id="cmpEm">—</div>
+        <div class="s" id="cmpEmSub">—</div>
+      </div>
+      <div class="cmp-cell">
+        <div class="k">差值（东财 − 新浪）</div>
+        <div class="v num" id="cmpDiff">—</div>
+        <div class="s" id="cmpDiffSub">—</div>
+      </div>
+    </div>
+    <div class="cmp-note" id="cmpNote">—</div>
+  </section>
 
   <section class="card chart-card">
     <div class="chart-head">
@@ -235,7 +289,7 @@
     <div><b>记录方式</b>　归档由 GitHub Actions 定时任务完成，每 10 分钟抓取一次行情，每个交易日只写入一条开盘价；开盘价当日确定后不再变动，重复抓取不会覆盖。你不必开机、不必打开本页，数据也会自动累积，全量归档在本仓库的 data/store.json。</div>
     <div><b>实时行情</b>　页面顶部的“最新价 / 最高 / 最低”由浏览器打开时直接向东方财富行情接口获取，每 30 秒跟随一次，不依赖后台任务是否准时。右上角同时显示两个时间：<b>实时</b>是行情快照时间，<b>归档</b>是后台落盘时间。外盘期货行情通常有 10–15 分钟延时。</div>
     <div><b>容错机制</b>　数据取自新浪财经日线接口，每次同步都会全量比对台账。即使任务中断数日，恢复后也会把缺失交易日的开盘价自动补齐，台账不会出现断档。</div>
-    <div><b>口径说明</b>　“开盘价”与“前收”取新浪外盘期货布伦特原油口径，当日确定后不再变动；“最高/最低/最新”随盘中实时刷新。跳空 = 开盘价 − 前收。行情为延时数据，仅供记录核对，不构成交易依据。</div>
+    <div><b>口径说明</b>　本页并列展示两个口径。<b>新浪</b>取外盘期货布伦特原油连续合约（OIL），是主口径：顶部大数字、图表、表格「开盘价」列都用它；<b>东财</b>取布伦特当月连续合约，作为副口径，出现在主数字下方的对照条、表格每行的小字、以及「两个口径对照」卡片里。两者换月日不同，平时基本重合，换月前后可能差出 2–5 美元，这个差值本页照实显示、不做修正。跳空 = 开盘价 − 前收，在同一口径内计算。行情为延时数据，仅供记录核对，不构成交易依据。</div>
     <div class="sign">
       <span>行情数据归交易所及数据提供方所有，本页仅作记录与研究之用</span>
       <span class="by">BRETT 个人授权制作</span>
@@ -283,6 +337,19 @@ function renderTop(data){
       const el = $('gapVal');
       el.className = 'chg ' + cls;
       el.innerHTML = `${arrow} 较前收 ${gap > 0 ? '+' : ''}${fmt(gap)} 美元　${pct > 0 ? '+' : ''}${fmt(pct)}%`;
+    }
+
+    // 副口径：东财当月连续同一天的开盘价，与主口径并排放在主数值下面
+    const alt = latest.alt;
+    if (alt && alt.open > 0){
+      const d = alt.open - latest.open;
+      $('altOpen').textContent = fmt(alt.open);
+      const dd = $('altDiff');
+      dd.textContent = (d > 0 ? '+' : '') + fmt(d);
+      dd.className = 'dd' + (Math.abs(d) >= 1 ? ' wide' : '');
+      $('dualBar').style.display = '';
+    } else {
+      $('dualBar').style.display = 'none';
     }
 
     $('lastVal').textContent = fmt(latest.last);
@@ -429,9 +496,19 @@ function renderTable(){
         <span class="${cls}" style="font-size:11.5px;opacity:.85"> ${pct > 0 ? '+' : ''}${fmt(pct)}%</span>`;
     }
     const badge = i === 0 ? '<span class="badge">最新</span>' : '';
+    // 开盘价下方挂另一口径与差值：平时两个数重合（只显示东财值），换月那天才出现差值
+    let altLine = '', rollTag = '';
+    if (r.alt && r.alt.open > 0){
+      const d = r.alt.open - r.open;
+      altLine = `<span class="d-alt">东 ${fmt(r.alt.open)}`
+        + (Math.abs(d) >= 0.005 ? `　${d > 0 ? '+' : ''}${fmt(d)}` : '')
+        + '</span>';
+      // 两源差 1 美元以上 = 换月日，这天的「跳空」是换月造成的，不是市场真跳空
+      if (Math.abs(d) >= 1) rollTag = '<span class="roll">换月</span>';
+    }
     return `<tr>
-      <td><span class="d-date">${r.date}</span><span class="d-week">${weekday(r.date)}</span>${badge}</td>
-      <td class="d-num">${fmt(r.open)}</td>
+      <td><span class="d-date">${r.date}</span><span class="d-week">${weekday(r.date)}</span>${badge}${rollTag}</td>
+      <td class="d-num">${fmt(r.open)}${altLine}</td>
       <td class="num" style="color:var(--ink-2)">${fmt(r.high)}</td>
       <td class="num" style="color:var(--ink-2)">${fmt(r.low)}</td>
       <td class="num" style="color:var(--ink-2)">${fmt(r.prevClose)}</td>
@@ -446,29 +523,90 @@ function renderTable(){
   $('moreBtn').textContent = `加载更多（还有 ${rest.toLocaleString('zh-CN')} 个交易日）`;
 }
 
+/* ---------------- 口径对照 ----------------
+   两个源对同一天的「开盘价」口径不同：新浪是 OIL 连续合约，东财是当月连续，
+   换月日不一样。平时几乎重合，换月前后能差 2–5 美元。所以不做取舍，两个都摆出来。 */
+function renderCmp(){
+  const latest = ALL[0];
+  if (!latest){
+    $('cmpMeta').textContent = '暂无数据';
+    ['cmpSina', 'cmpEm', 'cmpDiff'].forEach(id => { $(id).textContent = '—'; });
+    return;
+  }
+
+  const isSina = latest.src === 'sina';
+  const s = isSina ? latest : null;
+  const e = isSina ? latest.alt : { open: latest.open, close: latest.last };
+
+  $('cmpMeta').textContent = latest.date + ' ' + weekday(latest.date)
+    + (latest.live ? ' · 实时补行' : ' · 归档行');
+
+  $('cmpSina').textContent = s ? fmt(s.open) : '—';
+  $('cmpSinaSub').textContent = s ? '收盘 ' + fmt(s.last) : '该日新浪无记录';
+
+  const hasEm = e && e.open > 0;
+  $('cmpEm').textContent = hasEm ? fmt(e.open) : '—';
+  $('cmpEmSub').textContent = hasEm ? '收盘 ' + fmt(e.close) : '该日东财无记录';
+
+  const dv = (s && hasEm) ? e.open - s.open : null;
+  const dvEl = $('cmpDiff');
+  if (dv === null){
+    dvEl.textContent = '—';
+    dvEl.className = 'v num';
+    $('cmpDiffSub').textContent = '需同日两源才能比';
+  } else {
+    dvEl.textContent = (dv > 0 ? '+' : '') + fmt(dv);
+    dvEl.className = 'v num ' + (Math.abs(dv) >= 1 ? (dv > 0 ? 'up' : 'down') : '');
+    $('cmpDiffSub').textContent = '占新浪开盘 ' + (dv > 0 ? '+' : '') + fmt(dv / s.open * 100) + '%';
+  }
+
+  const recent = ALL.filter(r => r.alt && r.alt.open > 0).slice(0, 30);
+  const note = $('cmpNote');
+  if (!recent.length){
+    note.textContent = '归档里还没有两个源同日的记录，暂时无法对照。';
+    return;
+  }
+
+  const diffs = recent.map(r => ({ date: r.date, d: r.alt.open - r.open }));
+  const wide = diffs.filter(x => Math.abs(x.d) >= 1);
+  const worst = diffs.reduce((a, b) => Math.abs(b.d) > Math.abs(a.d) ? b : a);
+  const avg = diffs.reduce((acc, x) => acc + Math.abs(x.d), 0) / diffs.length;
+
+  $('cmpMeta').textContent += ` · 近 ${recent.length} 个共同交易日`;
+  note.innerHTML = '两个源偶尔对同一天报出不同的开盘价，原因是<b>换月</b>：新浪取 OIL 连续合约，东财取当月连续，'
+    + `切换月份的日子不同，平时两条线基本重合。近 ${recent.length} 个共同交易日里，平均差 <b>${fmt(avg)}</b> 美元，`
+    + (wide.length
+        ? `${wide.length} 天超过 1 美元，最大 <b>${(worst.d > 0 ? '+' : '') + fmt(worst.d)}</b>（${worst.date}）。`
+        : '没有一天超过 1 美元。')
+    + ' 表格「开盘价」列下方的小字，就是当天东财口径的值与差值；差值超过 1 美元的日子在日期旁标了「换月」，'
+    + '这些天的「跳空」来自合约切换、不是市场真跳空，别当异动看。';
+}
+
 /* ---------------- 启动 ---------------- */
 /** 后端按日期升序返回；转为页面使用的降序结构，并补齐前收、收盘等字段 */
-/** 归档 → 表格行（倒序）。新浪为主源，东财只补新浪缺的交易日 */
+/** 归档 → 表格行（倒序）。两个来源都保留：
+ *  新浪 OIL 连续合约 = 主口径（页面主数值、开盘价列、图表都用它）；
+ *  东财当月连续 = 副口径，挂在 alt 上供并列对照。
+ *  主口径缺某交易日时用副口径补一行，台账不断档（src 标 em）。 */
 function buildRows(data){
-  const byDate = new Map();
-  const add = (arr) => {
-    (arr || []).filter(r => r && r.date).forEach(r => {
-      if (!byDate.has(r.date)) byDate.set(r.date, r);   // 先来的优先
-    });
-  };
-  add(data.brent);
-  add(data.emBrent);      // 新浪日线偶尔落后一天，东财已更新时页面不至于缺当日
-  const asc = [...byDate.values()].sort((a, b) => a.date < b.date ? -1 : 1);
-  return asc.map((r, i) => ({
-    date: r.date,
-    open: r.open,
-    high: r.high,
-    low: r.low,
-    last: r.close,
-    prevClose: i > 0 ? asc[i - 1].close : null,
-    volume: r.volume,
-    quoteTime: ''
-  })).reverse();
+  const sina = new Map(), em = new Map();
+  (data.brent || []).forEach(r => { if (r && r.date) sina.set(r.date, r); });
+  (data.emBrent || []).forEach(r => { if (r && r.date) em.set(r.date, r); });
+
+  const asc = [...new Set([...sina.keys(), ...em.keys()])].sort().map(d => {
+    const s = sina.get(d), e = em.get(d);
+    const base = s || e;
+    return {
+      date: d,
+      open: base.open, high: base.high, low: base.low, last: base.close,
+      volume: base.volume, quoteTime: '',
+      src: s ? 'sina' : 'em',
+      alt: (s && e) ? { open: e.open, close: e.close, high: e.high, low: e.low } : null
+    };
+  });
+  // 前收取同一口径内的上一交易日收盘（映射后的字段叫 last，不是 close）
+  asc.forEach((r, i) => { r.prevClose = i > 0 ? asc[i - 1].last : null; });
+  return asc.reverse();
 }
 
 /* ---------------- 浏览器直连实时行情 ----------------
@@ -602,7 +740,7 @@ async function refreshLive(){
     LIVE = q;
     liveFail = 0;
     renderTop({ meta: META });
-    if (changed){ drawChart(); renderTable(); }
+    if (changed){ drawChart(); renderTable(); renderCmp(); }
   } catch(err){
     // 实时接口拿不到不是故障：东财本身就是延时行情，归档那条线照常在看
     liveFail++;
@@ -655,6 +793,7 @@ async function loadArchive(force){
   renderTop({ meta: META });
   drawChart();
   renderTable();
+  renderCmp();
   return true;
 }
 
