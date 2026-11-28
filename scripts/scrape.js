@@ -167,7 +167,7 @@ async function fetchSinaBrent() {
         console.log(`[sync] 新浪实时校正跳过：${e.message}`);
       }
 
-      return out;
+      return cleanSeries(out, '新浪布伦特');
     } catch (err) {
       lastErr = err;
       if (attempt < 2) await sleep(1500);
@@ -224,7 +224,7 @@ async function fetchKline(secid, minPrice, maxPrice) {
         }
         if (!out.length) throw new Error('日线解析结果为空');
         if (dropped) console.log(`[kline] ${secid} 剔除异常点位 ${dropped} 条`);
-        return out;
+        return cleanSeries(out, secid);
       } catch (err) {
         lastErr = err;
         console.log(`[kline] ${secid} 第 ${attempt + 1} 次失败：${err.message || err.code || err}`);
@@ -239,6 +239,10 @@ async function fetchKline(secid, minPrice, maxPrice) {
 /* 归档                                                                */
 /* ------------------------------------------------------------------ */
 
+/** 载入老库时被剔除的行数。有存量被清理就必须落盘，
+ *  否则指纹比对会判定"数据没变化"，清洗结果只活在内存里，下一轮又从磁盘读回脏数据。 */
+let LEGACY_DROPPED = 0;
+
 function loadStore() {
   const empty = {
     brent: [],
@@ -249,20 +253,89 @@ function loadStore() {
   try {
     if (!fs.existsSync(STORE_FILE)) return empty;
     const raw = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
-    return {
-      brent: Array.isArray(raw.brent) ? raw.brent.filter((r) => r && r.date) : [],
-      emBrent: Array.isArray(raw.emBrent) ? raw.emBrent.filter((r) => r && r.date) : [],
-      gasoil: Array.isArray(raw.gasoil) ? raw.gasoil.filter((r) => r && r.date) : [],
-      meta: raw.meta || empty.meta,
-    };
+    // 老归档里已经混进了休市占位行和 OHLC 自相矛盾的记录（2026-11-28 之前写入的），
+    // 每次载入都过一遍清洗，保证库里存量与新增口径一致。
+    const rawBrent = Array.isArray(raw.brent) ? raw.brent.filter((r) => r && r.date) : [];
+    const rawEm = Array.isArray(raw.emBrent) ? raw.emBrent.filter((r) => r && r.date) : [];
+    const rawGs = Array.isArray(raw.gasoil) ? raw.gasoil.filter((r) => r && r.date) : [];
+    const brent = cleanSeries(rawBrent, '库内 brent');
+    const emBrent = cleanSeries(rawEm, '库内 emBrent');
+    const gasoil = cleanSeries(rawGs, '库内 gasoil');
+    LEGACY_DROPPED =
+      rawBrent.length - brent.length + (rawEm.length - emBrent.length) + (rawGs.length - gasoil.length);
+    return { brent, emBrent, gasoil, meta: raw.meta || empty.meta };
   } catch (err) {
     console.error('[store] 读取失败，按空库处理：', err.message);
     return empty;
   }
 }
 
-function mergeInto(list, rows) {
-  if (!rows) return 0;
+/* ------------------------------------------------------------------ */
+/* 清洗                                                                */
+/* ------------------------------------------------------------------ */
+
+/** 周六周日一定不是交易日 */
+function isWeekend(date) {
+  const w = new Date(date + 'T00:00:00Z').getUTCDay();
+  return w === 0 || w === 6;
+}
+
+/** 修掉 OHLC 自相矛盾的点：新浪偶发 high < close、low > open 这类脏值（历史上有 24 处） */
+function fixOhlc(r) {
+  r.high = Math.max(r.high, r.open, r.close);
+  r.low = Math.min(r.low, r.open, r.close);
+  return r;
+}
+
+/**
+ * 疑似「休市占位行」：成交量为 0，且整根平盘、或与前一交易日完全重复。
+ *
+ * 两家源都会在假日补出这样一根 K 线：
+ *   东财：2018-01-01（元旦）、2018-03-30（耶稣受难日）、2018-03-31（周六）
+ *   新浪：2017-01-02、2016-12-26、2017-12-25 等
+ * 它们不是交易日，留在表里就是假数据——表格会多出一行"当天开盘=最高=最低=收盘"，
+ * 图上是一根看不见的横线，谁看都以为是真行情。
+ *
+ * 注意：新浪有一段时期（2018-06 ~ 2019-06）整段 volume 填 0，但 OHLC 正常变化，
+ * 那种是真交易日、只是量缺失，不能删——所以必须"零量 + 平盘/重复"两个条件同时满足。
+ */
+function isPlaceholder(r, prev) {
+  if (r.volume > 0) return false;
+  const flat = r.open === r.high && r.high === r.low && r.low === r.close;
+  const dup =
+    prev &&
+    r.open === prev.open &&
+    r.high === prev.high &&
+    r.low === prev.low &&
+    r.close === prev.close;
+  return flat || dup;
+}
+
+/** 统一清洗：去周末、去占位行、修 OHLC。
+ *  永远不删最后一根——当日刚开盘时，那根本来就可能是平盘、零量。 */
+function cleanSeries(rows, label) {
+  const out = [];
+  let dropped = 0;
+  let fixed = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const before = [r.high, r.low].join('|');
+    fixOhlc(r);
+    if ([r.high, r.low].join('|') !== before) fixed++;
+    const isLast = i === rows.length - 1;
+    if (!isLast && (isWeekend(r.date) || isPlaceholder(r, out[out.length - 1]))) {
+      dropped++;
+      continue;
+    }
+    out.push(r);
+  }
+  if (dropped || fixed) {
+    console.log(`[clean] ${label} 剔除休市/占位行 ${dropped} 条，修正 OHLC ${fixed} 条`);
+  }
+  return out;
+}
+
+function mergeInto(list, rows) {  if (!rows) return 0;
   const map = new Map(list.map((r) => [r.date, r]));
   let added = 0;
   for (const row of rows) {
@@ -361,7 +434,8 @@ function writeJson(file, obj) {
     }
   }
 
-  const changed = fingerprint(store) !== before;
+  const changed = fingerprint(store) !== before || LEGACY_DROPPED > 0;
+  if (LEGACY_DROPPED > 0) console.log(`[clean] 存量清理 ${LEGACY_DROPPED} 行，强制落盘`);
 
   store.meta.brentCount = store.brent.length;
   store.meta.gasoilCount = store.gasoil.length;
